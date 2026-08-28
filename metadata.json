@@ -1,0 +1,6 @@
+{
+  "name": "GUARDRAIL CORE",
+  "description": "Financial Control Plane for Autonomous AI Commerce with Geometric Balance Alignment",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

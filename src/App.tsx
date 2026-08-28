@@ -1,0 +1,179 @@
+import React, { useState } from 'react';
+import { GuardrailProvider, useGuardrail } from './context/GuardrailContext';
+import { AppShell } from './components/layout/AppShell';
+
+// Hero Components
+import { GuardrailCore3D } from './components/hero/GuardrailCore3D';
+import { AIAgentInAction } from './components/hero/AIAgentInAction';
+import { AgentAuthorityPanel } from './components/hero/AgentAuthorityPanel';
+import { OrbitingSystemNodes } from './components/hero/OrbitingSystemNodes';
+
+// Command Components
+import { GlobalAlertBar } from './components/command/GlobalAlertBar';
+import { KpiStrip } from './components/command/KpiStrip';
+import { LiveTransactionFeed } from './components/command/LiveTransactionFeed';
+import { RevenueIntelligence } from './components/command/RevenueIntelligence';
+import { QuickActions } from './components/command/QuickActions';
+import { SystemHealth } from './components/command/SystemHealth';
+
+// Full Screen Dedicated Views
+import { AgentsView } from './components/views/AgentsView';
+import { TransactionsView } from './components/views/TransactionsView';
+import { PoliciesView } from './components/views/PoliciesView';
+import { ApprovalsView } from './components/views/ApprovalsView';
+import { RiskView } from './components/views/RiskView';
+import { FailureLabView } from './components/views/FailureLabView';
+import { EvaluationView } from './components/views/EvaluationView';
+import { RevenueView } from './components/views/RevenueView';
+import { AuditView } from './components/views/AuditView';
+import { SystemView } from './components/views/SystemView';
+import { BeforeAfterView } from './components/views/BeforeAfterView';
+
+const DashboardContent: React.FC = () => {
+  const { 
+    currentNav, 
+    setCurrentNav,
+    transactions, 
+    setSelectedTransaction, 
+    setIsTransactionDrawerOpen,
+    kpiMetrics,
+    revenueData,
+    agentAuthority
+  } = useGuardrail();
+
+  const [activeSystemNode, setActiveSystemNode] = useState<string | null>('AI_REASONING');
+
+  // The active transaction currently shown in the action harness
+  const activeHarnessTx = transactions[0];
+
+  const handleOpenTransactionDrawer = (tx: any) => {
+    setSelectedTransaction(tx);
+    setIsTransactionDrawerOpen(true);
+  };
+
+  // Render view depending on navigation
+  const renderCurrentView = () => {
+    switch (currentNav) {
+      case 'AGENTS':
+        return <AgentsView />;
+      case 'TRANSACTIONS':
+        return <TransactionsView />;
+      case 'POLICIES':
+        return <PoliciesView />;
+      case 'APPROVALS':
+        return <ApprovalsView />;
+      case 'RISK':
+        return <RiskView />;
+      case 'FAILURE_LAB':
+        return <FailureLabView />;
+      case 'EVALUATION':
+        return <EvaluationView />;
+      case 'REVENUE':
+        return <RevenueView />;
+      case 'AUDIT':
+        return <AuditView />;
+      case 'SYSTEM':
+        return <SystemView />;
+      case 'BEFORE_AFTER':
+        return <BeforeAfterView />;
+      case 'OVERVIEW':
+      default:
+        return (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Global Real-time Alert & Notification Strip */}
+            <GlobalAlertBar />
+
+            {/* 1. Orbiting 6 System Subsystem Telemetry Nodes */}
+            <OrbitingSystemNodes
+              activeNodeId={activeSystemNode}
+              onNodeClick={(id) => {
+                setActiveSystemNode(id);
+                if (id === 'POLICY_ENGINE') setCurrentNav('POLICIES');
+                if (id === 'RISK_SCORING') setCurrentNav('RISK');
+                if (id === 'IDEMPOTENCY_LEDGER') setCurrentNav('AUDIT');
+                if (id === 'AUTONOMY_DISPATCH') setCurrentNav('AGENTS');
+                if (id === 'SETTLEMENT_RAILS') setCurrentNav('TRANSACTIONS');
+              }}
+            />
+
+            {/* 2. Central Core Hero Grid (Geometric 3-Column Layout) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 w-full items-stretch">
+              {/* Left: AI Agent in Action Harness */}
+              <div className="lg:col-span-4 h-full min-h-[360px]">
+                <AIAgentInAction
+                  activeTransaction={activeHarnessTx}
+                  onInspectDetails={() => handleOpenTransactionDrawer(activeHarnessTx)}
+                />
+              </div>
+
+              {/* Center: GuardrailCore3D Holographic Visualizer */}
+              <div className="lg:col-span-4 h-full min-h-[360px]">
+                <GuardrailCore3D
+                  statusText={
+                    activeHarnessTx.status === 'BLOCKED'
+                      ? 'AI ALIGNMENT STATE: ACTION HALTED'
+                      : activeHarnessTx.status === 'REVIEW'
+                      ? 'AI ALIGNMENT STATE: SUPERVISOR ESCALATION'
+                      : 'AI ALIGNMENT STATE: ACTIVE'
+                  }
+                />
+              </div>
+
+              {/* Right: Agent Authority Bounds Panel */}
+              <div className="lg:col-span-4 h-full min-h-[360px]">
+                <AgentAuthorityPanel authority={agentAuthority} />
+              </div>
+            </div>
+
+            {/* 3. 6-Card KPI Strip */}
+            <KpiStrip
+              metrics={kpiMetrics}
+              onKpiClick={(type) => {
+                if (type === 'agents') setCurrentNav('AGENTS');
+                if (type === 'approvals') setCurrentNav('APPROVALS');
+                if (type === 'blocked') setCurrentNav('FAILURE_LAB');
+                if (type === 'volume') setCurrentNav('REVENUE');
+                if (type === 'violations') setCurrentNav('POLICIES');
+              }}
+            />
+
+            {/* 4. Quick Action Signature Command Bar */}
+            <QuickActions
+              onOpenPolicyStudio={() => setCurrentNav('POLICIES')}
+              onOpenAgentActivity={() => setCurrentNav('TRANSACTIONS')}
+              onOpenFailureLab={() => setCurrentNav('FAILURE_LAB')}
+              onOpenEvaluation={() => setCurrentNav('EVALUATION')}
+            />
+
+            {/* 5. Two-Column Analytical Matrix (Live Feed + Revenue Intelligence) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 w-full">
+              <LiveTransactionFeed
+                transactions={transactions}
+                onSelectTransaction={handleOpenTransactionDrawer}
+              />
+              <RevenueIntelligence data={revenueData} />
+            </div>
+
+            {/* 6. System Health & Telemetry Nodes */}
+            <SystemHealth />
+          </div>
+        );
+    }
+  };
+
+  return (
+    <AppShell>
+      {renderCurrentView()}
+    </AppShell>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <GuardrailProvider>
+      <DashboardContent />
+    </GuardrailProvider>
+  );
+};
+
+export default App;

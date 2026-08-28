@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Courier New', Courier, monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #0A0A0A;
+    color: #E0E0E0;
+  }
+
+  code, pre, .font-mono, .mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Monospace shorthand */
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Geometric Balance Grid Pattern */
+.grid-bg {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.bg-tech-grid {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Hairline precision borders */
+.hairline {
+  border-width: 0.5px;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Accent bar indicators */
+.accent-bar {
+  width: 3px;
+  background: #FF3D00;
+}
+
+.accent-bar-green {
+  width: 3px;
+  background: #00FF41;
+}
+
+.accent-bar-white {
+  width: 3px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.accent-bar-amber {
+  width: 3px;
+  background: #FFB52E;
+}
+
+/* Core Radial Gradient */
+.core-gradient {
+  background: radial-gradient(circle at center, #1A1A1A 0%, #0A0A0A 100%);
+}
+
+/* Geometric Panel styles */
+.guardrail-panel {
+  background: #0E0E0E;
+  border: 1px solid #222222;
+  box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.5);
+}
+
+.guardrail-panel-elevated {
+  background: #111111;
+  border: 1px solid #333333;
+}
+
+/* Custom Scrollbar - Brutalist Sharp */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #222222;
+  border-radius: 0px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #333333;
+}
+
+/* Minimalist Glowing/Pulse utilities */
+.glow-orange-sm {
+  box-shadow: 0 0 15px -3px rgba(255, 61, 0, 0.3);
+}
+
+.glow-green-sm {
+  box-shadow: 0 0 15px -3px rgba(0, 255, 65, 0.3);
+}
+
+@keyframes pulseSlow {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+.animate-pulse-slow {
+  animation: pulseSlow 4s ease-in-out infinite;
+}
+
