@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { GuardrailProvider, useGuardrail } from './context/GuardrailContext';
 import { AppShell } from './components/layout/AppShell';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthView } from './components/auth/AuthView';
 
 // Hero Components
 import { GuardrailCore3D } from './components/hero/GuardrailCore3D';
@@ -28,6 +30,7 @@ import { RevenueView } from './components/views/RevenueView';
 import { AuditView } from './components/views/AuditView';
 import { SystemView } from './components/views/SystemView';
 import { BeforeAfterView } from './components/views/BeforeAfterView';
+import { LiveEngineTestButton } from './components/LiveEngineTestButton';
 
 const DashboardContent: React.FC = () => {
   const { 
@@ -164,15 +167,41 @@ const DashboardContent: React.FC = () => {
   return (
     <AppShell>
       {renderCurrentView()}
+      <LiveEngineTestButton />
     </AppShell>
+  );
+};
+
+const AppContent: React.FC = () => {
+  const { session, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center">
+        <div className="animate-pulse flex flex-col items-center">
+          <div className="h-12 w-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
+          <p className="mt-4 text-blue-500 font-mono text-sm tracking-widest">INITIALIZING SECURE KERNEL...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <AuthView />;
+  }
+
+  return (
+    <GuardrailProvider>
+      <DashboardContent />
+    </GuardrailProvider>
   );
 };
 
 export const App: React.FC = () => {
   return (
-    <GuardrailProvider>
-      <DashboardContent />
-    </GuardrailProvider>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 
