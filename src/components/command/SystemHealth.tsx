@@ -23,9 +23,9 @@ export const SystemHealth: React.FC<SystemHealthProps> = ({ items = SYSTEM_HEALT
         </div>
 
         <div className="flex items-center gap-3 text-[10px] mono text-[#888]">
-          <span>GLOBAL LATENCY: <strong className="text-[#00FF41]">1.24ms</strong></span>
+          <span>GLOBAL LATENCY: <strong className="text-[#00FF41]">NOT TRACKED</strong></span>
           <span>•</span>
-          <span>UPTIME: <strong className="text-white">99.999%</strong></span>
+          <span>UPTIME: <strong className="text-white">NOT TRACKED</strong></span>
         </div>
       </div>
 

@@ -1,0 +1,132 @@
+[
+  {
+    "testName": "Sandbox A Provisioning",
+    "category": "Authentication",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Create valid auth user and merchant",
+    "actual": "Success (Merchant: 7e956946-9561-48bf-b765-7ac453676b60)",
+    "evidence": "API 200, Role: MERCHANT_ADMIN",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Duplicate Provisioning Rejection",
+    "category": "Provisioning",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Reject HTTP 409",
+    "actual": "Clean rejection",
+    "evidence": "Edge Function non-2xx status",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Sandbox B Provisioning",
+    "category": "Authentication",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Distinct merchant UUID",
+    "actual": "Merchant: bab34f33-fa82-4e8a-9ec1-6599ab1ae4a6",
+    "evidence": "Distinct from A",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "A -> B Isolation",
+    "category": "Tenant Isolation",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "0 rows returned",
+    "actual": "0 rows returned",
+    "evidence": "RLS Enforced",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "A -> Prod Isolation",
+    "category": "Production Isolation",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "0 rows returned",
+    "actual": "0 rows returned",
+    "evidence": "RLS Enforced",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Privilege Escalation via Signup",
+    "category": "Privilege Escalation",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Rejected by DB Trigger",
+    "actual": "Database error saving new user",
+    "evidence": "Database error saving new user",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Operator Global Read",
+    "category": "Platform Operator",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "> 0 rows",
+    "actual": "1 rows read",
+    "evidence": "Bypassed tenant RLS successfully",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Live Engine PERMIT",
+    "category": "Guardrail Engine",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Decision PERMIT",
+    "actual": "Decision PERMIT",
+    "evidence": "TxId: a2b75e72-cd59-4843-aa31-d8173980ed4a",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Live Engine BLOCK",
+    "category": "Guardrail Engine",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Decision BLOCK",
+    "actual": "Decision BLOCK",
+    "evidence": "Reason: undefined",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Live Engine REVIEW",
+    "category": "Guardrail Engine",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Decision REVIEW",
+    "actual": "Decision REVIEW",
+    "evidence": "TxId: f687c0f3-53bd-4db8-bfcf-595bbf1416a2",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Supervisor APPROVE Workflow",
+    "category": "Supervisor Review",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Review APPROVED & Settled",
+    "actual": "Success",
+    "evidence": "Review ID: 6d936c0a-1869-4d91-9d42-47216534165e",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Idempotency & Race Protection",
+    "category": "Data Integrity",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "Deduplicated without double debit",
+    "actual": "Parallel settlement locked",
+    "evidence": "Idempotency constraint verified",
+    "severity": "NORMAL"
+  },
+  {
+    "testName": "Audit Immutability (DELETE Blocked)",
+    "category": "Audit Ledger",
+    "environment": "LIVE",
+    "status": "PASS",
+    "expected": "DELETE rejected by RLS / Permissions",
+    "actual": "DELETE denied or 0 affected",
+    "evidence": "Immutable audit trail verified",
+    "severity": "NORMAL"
+  }
+]

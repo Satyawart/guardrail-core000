@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useGuardrail } from '../../context/GuardrailContext';
-import { OBSERVABILITY_DATA } from '../../data/mockData';
 import { ArchitectureControlPlane } from '../command/ArchitectureControlPlane';
 import { Cpu, Activity, Clock, ShieldCheck, Server, Zap, CheckCircle } from 'lucide-react';
 
 export const SystemView: React.FC = () => {
-  const { systemHealth } = useGuardrail();
-  const [timeRange, setTimeRange] = useState<'1H' | '24H' | '7D' | '30D'>('24H');
+  const { systemHealth, globalFilters, setGlobalFilters, analyticsData } = useGuardrail();
+  const timeRange = globalFilters.timeRange;
 
-  const telemetrySeries = OBSERVABILITY_DATA[timeRange] || OBSERVABILITY_DATA['24H'];
+  const telemetrySeries = analyticsData?.telemetry_series || [];
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
@@ -32,7 +31,7 @@ export const SystemView: React.FC = () => {
           {(['1H', '24H', '7D', '30D'] as const).map((r) => (
             <button
               key={r}
-              onClick={() => setTimeRange(r)}
+              onClick={() => setGlobalFilters(prev => ({ ...prev, timeRange: r }))}
               className={`px-3 py-1 text-[10px] font-bold transition ${
                 timeRange === r ? 'bg-[#00FF41] text-black' : 'text-[#888] hover:text-white'
               }`}
@@ -89,7 +88,7 @@ export const SystemView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1A1A1A]">
-              {telemetrySeries.map((pt, i) => (
+              {telemetrySeries.map((pt: any, i: number) => (
                 <tr key={i} className="hover:bg-[#141414]">
                   <td className="p-2.5 font-bold text-white">{pt.time}</td>
                   <td className="p-2.5 text-[#00FF41] font-bold">{pt.latency}ms</td>

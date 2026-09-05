@@ -1,4 +1,4 @@
-export type TransactionStatus = 'SUCCESS' | 'BLOCKED' | 'REVIEW' | 'PROCESSING' | 'SETTLED' | 'FAILED' | 'AI';
+export type TransactionStatus = 'SUCCESS' | 'BLOCKED' | 'REVIEW' | 'PROCESSING' | 'SETTLED' | 'FAILED' | 'AI' | 'REJECTED' | 'PENDING_REVIEW';
 
 export type DemoScenarioId = 
   | 'SCENARIO_1_SUCCESS'
@@ -140,6 +140,19 @@ export interface AgentActivityEntry {
   decision: 'PERMIT' | 'BLOCK' | 'REVIEW';
   amount: number;
   txId?: string;
+}
+
+export interface RiskComponent {
+  name: string;
+  score: number;
+  max: number;
+  status: 'ZERO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  details: string;
+}
+
+export interface RiskIntelligenceMetric {
+  averageScore: number;
+  components: RiskComponent[];
 }
 
 export interface AgentRuntime {

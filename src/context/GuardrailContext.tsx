@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { supabase } from '../utils/supabase';
 import { 
   Transaction, 
   KpiMetric, 
@@ -11,7 +12,8 @@ import {
   AgentRuntime,
   AuditRecord,
   NotificationItem,
-  NavItem
+  NavItem,
+  RiskIntelligenceMetric
 } from '../types';
 import { 
   INITIAL_KPIS, 
@@ -39,13 +41,16 @@ interface GuardrailContextType {
   setCurrentNav: (nav: NavItem) => void;
 
   // Active Data Collections
+  isLiveLoading: boolean;
   transactions: Transaction[];
   policies: PolicyRule[];
   approvals: ApprovalRequest[];
   agents: AgentRuntime[];
   auditLogs: AuditRecord[];
+  analyticsData: any;
   kpiMetrics: KpiMetric[];
   revenueData: RevenueMetric;
+  riskData: RiskIntelligenceMetric;
   systemHealth: SystemHealthItem[];
   agentAuthority: typeof PRIMARY_AGENT_AUTHORITY;
   notifications: NotificationItem[];
@@ -69,6 +74,7 @@ interface GuardrailContextType {
   setIsPitchModeOpen: (open: boolean) => void;
   globalFilters: GlobalFilters;
   setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>>;
+  fetchLiveState: () => Promise<void>;
 
   // Actions & Operations
   triggerScenario: (scenarioId: DemoScenarioId) => void;
@@ -77,6 +83,7 @@ interface GuardrailContextType {
   addNewPolicy: (policy: Partial<PolicyRule>) => PolicyRule;
   updatePolicy: (policyId: string, updates: Partial<PolicyRule>) => void;
   toggleAgentStatus: (agentId: string, newStatus: 'ACTIVE' | 'PAUSED' | 'BLOCKED') => void;
+  provisionAgent: (payload: { name: string; type: string; spendLimit: number; discountMaxPercent: number; refundMax: number }) => Promise<void>;
   markNotificationAsRead: (id: string) => void;
   clearAllNotifications: () => void;
   resetDemoState: () => void;
@@ -90,15 +97,274 @@ const GuardrailContext = createContext<GuardrailContextType | undefined>(undefin
 
 export const GuardrailProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentNav, setCurrentNav] = useState<NavItem>('OVERVIEW');
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
-  const [policies, setPolicies] = useState<PolicyRule[]>(INITIAL_POLICIES);
-  const [approvals, setApprovals] = useState<ApprovalRequest[]>(INITIAL_APPROVALS);
-  const [agents, setAgents] = useState<AgentRuntime[]>(INITIAL_AGENTS);
-  const [auditLogs, setAuditLogs] = useState<AuditRecord[]>(INITIAL_AUDIT_LOGS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [policies, setPolicies] = useState<PolicyRule[]>([]);
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  const [agents, setAgents] = useState<AgentRuntime[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [kpiMetrics, setKpiMetrics] = useState<KpiMetric[]>(INITIAL_KPIS);
   const [revenueData, setRevenueData] = useState<RevenueMetric>(REVENUE_INTELLIGENCE_DATA);
+  const [riskData, setRiskData] = useState<RiskIntelligenceMetric>({ averageScore: 0.04, components: [] });
   const [systemHealth, setSystemHealth] = useState<SystemHealthItem[]>(SYSTEM_HEALTH_ITEMS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [isLiveLoading, setIsLiveLoading] = useState(true);
+  const [globalFilters, setGlobalFilters] = useState<GlobalFilters>({
+    timeRange: '24H',
+    selectedAgentId: 'ALL',
+    selectedStatus: 'ALL',
+    searchQuery: ''
+  });
+
+  // Live Data Fetching
+  const fetchLiveState = useCallback(async () => {
+    setIsLiveLoading(true);
+    try {
+      // 1. Fetch Agents & Authority
+      const { data: dbAgents, error: agentsErr } = await supabase
+        .from('agents')
+        .select(`
+          *,
+          agent_authority (*)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (agentsErr) throw agentsErr;
+
+      // 1b. Fetch Merchant context for UI
+      const { data: dbMerchant } = await supabase
+        .from('merchants')
+        .select('name')
+        .limit(1)
+        .single();
+      const orgName = dbMerchant?.name || 'Your Organization';
+
+      // 2. Fetch Policies & Versions
+      const { data: dbPolicies, error: polErr } = await supabase
+        .from('policies')
+        .select(`
+          *,
+          policy_versions (*)
+        `)
+        .order('created_at', { ascending: false });
+        
+      if (polErr) throw polErr;
+
+      // 3. Fetch Transactions with complete payload joins
+      const { data: dbTxs, error: txsErr } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          agents (name, type),
+          intents (description, structured_data),
+          guardrail_decisions (decision, reason),
+          risk_evaluations (risk_score, risk_level, indicators),
+          policy_evaluations (result, violation_details, policy_versions(natural_language))
+        `)
+        .order('created_at', { ascending: false });
+        
+      if (txsErr) throw txsErr;
+
+      // 4. Fetch Human Reviews
+      const { data: dbReviews, error: revErr } = await supabase
+        .from('human_reviews')
+        .select(`
+          *,
+          transactions (
+             id, amount, status, idempotency_key, agent_id,
+             intents (description),
+             agents (id, name, type),
+             risk_evaluations (risk_score, risk_level),
+             guardrail_decisions (decision, reason)
+          )
+        `)
+        .order('created_at', { ascending: false });
+        
+      if (revErr) throw revErr;
+
+      // 5. Fetch Audit Logs
+      const { data: dbAudits, error: auditErr } = await supabase
+        .from('audit_events')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (auditErr) throw auditErr;
+
+      // ---- Map to Frontend Types ----
+      const mappedAgents: AgentRuntime[] = (dbAgents || []).map(a => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        status: a.status as 'ACTIVE' | 'PAUSED' | 'BLOCKED',
+        spendLimit: a.agent_authority?.[0]?.spend_limit || 0,
+        usedSpend: 0,
+        remainingSpend: a.agent_authority?.[0]?.spend_limit || 0,
+        utilizationPercent: 0,
+        discountAuthorityMaxPercent: a.agent_authority?.[0]?.discount_max_percent || 0,
+        refundAuthorityMax: a.agent_authority?.[0]?.refund_max || 0,
+        riskScore: Number(a.risk_score) || 0,
+        activePoliciesCount: dbPolicies?.filter(p => p.status === 'ACTIVE').length || 0,
+        lastAction: 'Awaiting',
+        lastActionTime: a.updated_at,
+        latencyAvg: '12ms',
+        tasksCompleted: 0,
+        timeline: []
+      }));
+      setAgents(mappedAgents);
+
+      const mappedPolicies: PolicyRule[] = (dbPolicies || []).map(p => {
+        // Find latest version
+        const versions = (p.policy_versions || []).sort((a: any, b: any) => b.version_number - a.version_number);
+        const latestVersion = versions[0];
+        
+        return {
+          id: p.id,
+          name: p.name,
+          category: p.category as 'MARGIN' | 'SPEND' | 'RISK' | 'VELOCITY' | 'DISCOUNT',
+          status: p.status as 'ACTIVE' | 'DRAFT' | 'PAUSED',
+          enforcementCount: 0,
+          naturalLanguage: latestVersion?.natural_language || p.name,
+          codeSnippet: latestVersion?.code_snippet || '',
+          version: `v${latestVersion?.version_number || 1}.0`,
+          versions: versions.map((v: any) => ({
+            version: `v${v.version_number}.0`,
+            createdAt: v.created_at,
+            author: 'System',
+            status: 'ACTIVE',
+            codeSnippet: v.code_snippet
+          }))
+        };
+      });
+      setPolicies(mappedPolicies);
+
+      const mappedTxs: Transaction[] = (dbTxs || []).map(tx => {
+        const decision = tx.guardrail_decisions?.[0];
+        const risk = tx.risk_evaluations?.[0];
+        const polEval = tx.policy_evaluations?.[0];
+        const intent = tx.intents;
+        const agent = tx.agents;
+
+        return {
+          id: tx.id,
+          timestamp: tx.created_at,
+          actor: agent?.name || 'Unknown Agent',
+          actorId: tx.agent_id,
+          actorType: agent?.type || 'AI Agent',
+          action: intent?.description || 'Unknown Action',
+          amount: tx.amount,
+          status: tx.status === 'APPROVED' ? 'SUCCESS' : tx.status as any,
+          merchantName: orgName, // Isolated by RLS
+          riskScore: risk?.risk_score ? Number(risk.risk_score) / 100 : 0.0,
+          riskLevel: risk?.risk_level || 'LOW',
+          policyApplied: polEval?.policy_versions?.natural_language || '',
+          reason: decision?.reason || '',
+          idempotencyKey: tx.idempotency_key || undefined,
+          steps: [], // Can map full trace later if needed
+          explainability: {
+             decision: decision?.decision as 'PERMIT' | 'BLOCKED' | 'REVIEW',
+             summary: decision?.reason || 'Evaluated deterministically',
+             checks: []
+          }
+        };
+      });
+      setTransactions(mappedTxs);
+
+      const mappedReviews: ApprovalRequest[] = (dbReviews || []).map(rev => {
+        const tx = rev.transactions;
+        const agent = tx?.agents;
+        const risk = tx?.risk_evaluations?.[0];
+        const decision = tx?.guardrail_decisions?.[0];
+        // intents is a single related record (not array) in this join
+        const intentDesc = (tx?.intents as any)?.description || 'Transaction review';
+        
+        return {
+          id: rev.id,
+          transactionId: tx?.id,
+          agentId: agent?.id || 'Unknown',
+          agentName: agent?.name || 'Unknown Agent',
+          merchant: orgName,
+          intent: intentDesc,
+          amount: tx?.amount || 0,
+          requestedAt: rev.created_at,
+          reason: decision?.reason || rev.notes || 'Human Review Required — amount exceeded single-transaction authority limit.',
+          policyException: 'Authority Limit Exceeded — Supervisor Escrow',
+          riskScore: risk?.risk_score ? Number(risk.risk_score) / 100 : 0.5,
+          status: rev.status as 'PENDING' | 'APPROVED' | 'REJECTED',
+          recommendation: rev.status === 'PENDING'
+            ? 'Supervisor review required. Transaction held pending human authorization.'
+            : rev.status === 'APPROVED'
+            ? 'Supervisor authorized — transaction released.'
+            : 'Supervisor declined — transaction blocked.'
+        };
+      });
+      setApprovals(mappedReviews);
+
+      const mappedAudits: AuditRecord[] = (dbAudits || []).map(aud => ({
+        id: aud.id,
+        timestamp: aud.created_at,
+        event: aud.event_type,
+        actor: aud.actor_type,
+        transactionId: aud.transaction_id || undefined,
+        decision: (aud.metadata as any)?.decision || 'INFO',
+        hash: aud.id, // Using UUID as hash approximation
+        details: JSON.stringify(aud.metadata)
+      }));
+      setAuditLogs(mappedAudits);
+
+      // Compute Live KPIs
+      const { data: analyticsRPC, error: analyticsError } = await supabase.rpc('get_governance_analytics', {
+        p_time_range: globalFilters.timeRange
+      });
+
+      if (!analyticsError && analyticsRPC) {
+        setAnalyticsData(analyticsRPC);
+        setKpiMetrics([
+          { id: 'agents', type: 'agents', title: 'Active AI Runtimes', value: analyticsRPC.active_agents.toString(), change: 'Live' },
+          { id: 'volume', type: 'volume', title: 'Capital Governed', value: `₹${(analyticsRPC.total_governed_spend / 1000).toFixed(1)}k`, change: 'Live' },
+          { id: 'blocked', type: 'blocked', title: 'Prevented Losses', value: analyticsRPC.block_count.toString(), change: 'Live' },
+          { id: 'violations', type: 'violations', title: 'Policy Violations', value: analyticsRPC.block_count.toString(), change: 'Live' },
+          { id: 'approvals', type: 'approvals', title: 'Pending Human Reviews', value: analyticsRPC.pending_reviews.toString(), change: analyticsRPC.pending_reviews > 0 ? 'Action Req' : 'Clear' }
+        ]);
+      } else {
+        console.error('Analytics RPC error:', analyticsError);
+      }
+
+      // Compute Live Revenue Intelligence
+      const { data: revenueRPC, error: revenueError } = await supabase.rpc('get_revenue_intelligence', {
+        p_time_range: globalFilters.timeRange
+      });
+
+      if (!revenueError && revenueRPC) {
+        setRevenueData(prev => ({
+          ...prev, 
+          ...revenueRPC
+        }));
+      } else {
+        console.error('Revenue RPC error:', revenueError);
+      }
+
+      // Compute Live Risk Intelligence
+      const { data: riskRPC, error: riskError } = await supabase.rpc('get_risk_intelligence', {
+        p_time_range: globalFilters.timeRange
+      });
+
+      if (!riskError && riskRPC) {
+        setRiskData(riskRPC as RiskIntelligenceMetric);
+      } else {
+        console.error('Risk RPC error:', JSON.stringify(riskError));
+      }
+
+    } catch (e) {
+      console.error('Phase 9 Live Fetch Error:', e);
+    } finally {
+      setIsLiveLoading(false);
+    }
+  }, [globalFilters.timeRange]);
+
+  useEffect(() => {
+    fetchLiveState();
+  }, [fetchLiveState]);
+
 
   // Inspector & Modal States
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -110,13 +376,6 @@ export const GuardrailProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isPitchModeOpen, setIsPitchModeOpen] = useState(false);
   const [replayingTxId, setReplayingTxId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ title: string; message: string; type?: 'success' | 'warning' | 'error' | 'info' } | null>(null);
-
-  const [globalFilters, setGlobalFilters] = useState<GlobalFilters>({
-    timeRange: '24H',
-    selectedAgentId: 'ALL',
-    selectedStatus: 'ALL',
-    searchQuery: ''
-  });
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
@@ -181,26 +440,84 @@ export const GuardrailProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   };
 
-  const toggleAgentStatus = (agentId: string, newStatus: 'ACTIVE' | 'PAUSED' | 'BLOCKED') => {
+  const provisionAgent = async (payload: { name: string; type: string; spendLimit: number; discountMaxPercent: number; refundMax: number }) => {
+    try {
+      const { data: merchantId } = await supabase.rpc('auth_merchant_id');
+
+      // 1. Insert into agents
+      const { data: newAgent, error: agentErr } = await supabase
+        .from('agents')
+        .insert({
+          merchant_id: merchantId,
+          name: payload.name,
+          type: payload.type,
+          status: 'ACTIVE',
+          risk_score: 0
+        })
+        .select()
+        .single();
+        
+      if (agentErr || !newAgent) throw agentErr || new Error('Failed to create agent');
+
+      // 2. Insert into agent_authority
+      const { error: authErr } = await supabase
+        .from('agent_authority')
+        .insert({
+          agent_id: newAgent.id,
+          merchant_id: merchantId,
+          spend_limit: payload.spendLimit,
+          discount_max_percent: payload.discountMaxPercent,
+          refund_max: payload.refundMax
+        });
+
+      if (authErr) throw authErr;
+
+      // 3. Emit Audit Log
+      await supabase.from('audit_events').insert({
+        entity_type: 'AGENT',
+        entity_id: newAgent.id,
+        event_type: 'AGENT_PROVISIONED',
+        actor_type: 'SUPERVISOR_ADMIN',
+        metadata: { decision: 'PROVISION', payload }
+      } as any);
+
+      addToast({
+        title: 'Agent Provisioned',
+        message: `${payload.name} has been securely deployed and bound to policy.`,
+        type: 'success'
+      });
+      
+      await fetchLiveState();
+    } catch (e: any) {
+      console.error('Provision Error:', e);
+      addToast({ title: 'Provisioning Failed', message: e.message || 'Failed to create agent', type: 'error' });
+    }
+  };
+
+  const toggleAgentStatus = async (agentId: string, newStatus: 'ACTIVE' | 'PAUSED' | 'BLOCKED') => {
     setAgents(prev => prev.map(a => a.id === agentId ? { ...a, status: newStatus } : a));
     
-    // Add audit record
-    const auditRecord: AuditRecord = {
-      id: `AUD-${Math.floor(10000 + Math.random() * 90000)}`,
-      timestamp: new Date().toLocaleTimeString(),
-      event: `AGENT_STATUS_${newStatus}`,
-      actor: 'SUPERVISOR_ADMIN',
-      decision: newStatus === 'ACTIVE' ? 'PERMIT' : 'BLOCK',
-      hash: `0x${Math.random().toString(16).substr(2, 12)}`,
-      details: `Agent ${agentId} status updated to ${newStatus}.`
-    };
-    setAuditLogs(prev => [auditRecord, ...prev]);
+    const { error } = await supabase.from('agents').update({ status: newStatus }).eq('id', agentId);
+    if (error) {
+      addToast({ title: 'Error', message: 'Failed to update agent status.', type: 'error' });
+      return;
+    }
+
+    await supabase.from('audit_events').insert({
+      entity_type: 'AGENT',
+      entity_id: agentId,
+      event_type: `AGENT_STATUS_${newStatus}`,
+      actor_type: 'SUPERVISOR_ADMIN',
+      metadata: { decision: newStatus === 'ACTIVE' ? 'PERMIT' : 'BLOCK', action: 'toggleAgentStatus' }
+    } as any);
 
     addToast({
       title: `Agent Status Updated`,
       message: `${agentId} runtime changed to ${newStatus}.`,
       type: newStatus === 'ACTIVE' ? 'success' : 'warning'
     });
+    
+    fetchLiveState();
   };
 
   const addNewPolicy = (policyData: Partial<PolicyRule>): PolicyRule => {
@@ -214,52 +531,44 @@ export const GuardrailProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       version: newVersion,
       enforcementCount: 0,
       codeSnippet: policyData.codeSnippet || 'if (margin < 0.15) return BLOCK("CUSTOM_VIOLATION");',
-      versions: [
-        {
-          version: newVersion,
-          createdAt: new Date().toISOString().split('T')[0],
-          author: 'Admin (Natural Language Compiler)',
-          status: 'ACTIVE',
-          diffSummary: 'Compiled from natural language prompt into AST rules.',
-          codeSnippet: policyData.codeSnippet || 'if (margin < 0.15) return BLOCK();'
-        }
-      ],
-      impactStats: {
-        triggered: 0,
-        blocked: 0,
-        reviewed: 0,
-        permitted: 0,
-        valueProtected: 0,
-        revenueUpliftPercent: 1.5
-      }
+      versions: []
     };
 
     setPolicies(prev => [newPolicy, ...prev]);
 
-    // Audit log
-    const auditRecord: AuditRecord = {
-      id: `AUD-${Math.floor(10000 + Math.random() * 90000)}`,
-      timestamp: new Date().toLocaleTimeString(),
-      event: 'POLICY_CREATED_AND_DEPLOYED',
-      actor: 'LLM_POLICY_COMPILER',
-      policyId: newPolicy.id,
-      decision: 'POLICY_UPDATE',
-      hash: `0x${Math.random().toString(16).substr(2, 12)}`,
-      details: `New policy "${newPolicy.name}" (${newVersion}) compiled & bound to 12 agent runtimes.`
-    };
-    setAuditLogs(prev => [auditRecord, ...prev]);
+    (async () => {
+      try {
+        const { data: merchantId } = await supabase.rpc('auth_merchant_id');
 
-    // Notification
-    const notif: NotificationItem = {
-      id: `notif_${Date.now()}`,
-      timestamp: 'Just now',
-      title: 'New Policy Deployed',
-      description: `Policy ${newPolicy.name} active across all agents.`,
-      type: 'POLICY',
-      targetNav: 'POLICIES',
-      read: false
-    };
-    setNotifications(prev => [notif, ...prev]);
+        const { data: dbPol } = await supabase.from('policies').insert({
+          merchant_id: merchantId,
+          name: newPolicy.name,
+          category: newPolicy.category,
+          status: 'ACTIVE'
+        }).select().single();
+        
+        if (dbPol) {
+          await supabase.from('policy_versions').insert({
+            policy_id: dbPol.id,
+            merchant_id: merchantId,
+            version_number: 1,
+            natural_language: newPolicy.naturalLanguage,
+            code_snippet: newPolicy.codeSnippet
+          });
+          
+          await supabase.from('audit_events').insert({
+            entity_type: 'POLICY',
+            entity_id: dbPol.id,
+            event_type: 'POLICY_CREATED_AND_DEPLOYED',
+            actor_type: 'LLM_POLICY_COMPILER',
+            metadata: { decision: 'POLICY_UPDATE', action: 'addNewPolicy' }
+          } as any);
+          fetchLiveState();
+        }
+      } catch (e) {
+        console.error('Failed to sync new policy', e);
+      }
+    })();
 
     addToast({
       title: 'Policy Compiled & Deployed',
@@ -271,111 +580,91 @@ export const GuardrailProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const updatePolicy = (policyId: string, updates: Partial<PolicyRule>) => {
-    setPolicies(prev => prev.map(p => {
-      if (p.id === policyId) {
-        return { ...p, ...updates };
-      }
-      return p;
-    }));
+    setPolicies(prev => prev.map(p => p.id === policyId ? { ...p, ...updates } : p));
+    
+    (async () => {
+       try {
+         if (updates.status) {
+           await supabase.from('policies').update({ status: updates.status }).eq('id', policyId);
+         }
+         if (updates.codeSnippet || updates.naturalLanguage) {
+           const { data: vers } = await supabase.from('policy_versions').select('version_number').eq('policy_id', policyId).order('version_number', { ascending: false }).limit(1);
+           const nextVer = vers?.[0] ? vers[0].version_number + 1 : 1;
+           await supabase.from('policy_versions').insert({
+             policy_id: policyId,
+             version_number: nextVer,
+             natural_language: updates.naturalLanguage || '',
+             code_snippet: updates.codeSnippet || ''
+           });
+         }
+         await supabase.from('audit_events').insert({
+           entity_type: 'POLICY',
+           entity_id: policyId,
+           event_type: 'POLICY_UPDATED',
+           actor_type: 'SUPERVISOR_ADMIN',
+           metadata: { decision: 'POLICY_UPDATE', updates }
+         } as any);
+         fetchLiveState();
+       } catch (e) {
+         console.error('Failed to update policy', e);
+       }
+    })();
   };
 
-  const approveRequest = (approvalId: string) => {
+  const approveRequest = async (approvalId: string) => {
     const req = approvals.find(a => a.id === approvalId);
     if (!req) return;
 
-    // Remove from pending approvals
-    setApprovals(prev => prev.filter(a => a.id !== approvalId));
+    try {
+      const { data, error } = await supabase.rpc('process_review_decision', {
+        p_review_id: approvalId,
+        p_decision: 'APPROVED',
+        p_reason: ''
+      });
 
-    // Update corresponding transaction if existing
-    setTransactions(prev => prev.map(tx => {
-      if (tx.id === req.transactionId || tx.amount === req.amount) {
-        return {
-          ...tx,
-          status: 'SUCCESS',
-          reason: `Supervisor Approved by human admin. Razorpay settlement completed.`,
-          steps: [
-            ...tx.steps,
-            {
-              id: `s_appr_${Date.now()}`,
-              stepNumber: tx.steps.length + 1,
-              name: 'SUPERVISOR_AUTHORIZED',
-              title: `Authorized by Human Supervisor. Razorpay payout executed.`,
-              status: 'PASS',
-              timestamp: new Date().toLocaleTimeString(),
-              latencyMs: 18,
-              input: `Approval ID: ${approvalId}`,
-              ruleEvaluated: 'Human-in-the-Loop Sign-off',
-              output: 'State: AUTHORIZED_AND_SETTLED'
-            }
-          ]
-        };
-      }
-      return tx;
-    }));
+      if (error) throw error;
 
-    // Update KPI metrics
-    setKpiMetrics(prev => prev.map(k => {
-      if (k.type === 'approvals') {
-        const remaining = approvals.length - 1;
-        return { ...k, value: remaining > 0 ? `${remaining} Pending` : '0 Pending' };
-      }
-      return k;
-    }));
+      setApprovals(prev => prev.filter(a => a.id !== approvalId));
 
-    // Add Audit Record
-    const auditRecord: AuditRecord = {
-      id: `AUD-${Math.floor(10000 + Math.random() * 90000)}`,
-      timestamp: new Date().toLocaleTimeString(),
-      event: 'SUPERVISOR_APPROVAL_EXECUTED',
-      actor: 'SUPERVISOR_ADMIN',
-      transactionId: req.transactionId || 'TX-9479-REVW',
-      decision: 'PERMIT',
-      hash: `0x${Math.random().toString(16).substr(2, 12)}`,
-      details: `Supervisor authorized ₹${req.amount.toLocaleString('en-IN')} payout exception (${req.policyException}). Settled on Razorpay testnet.`
-    };
-    setAuditLogs(prev => [auditRecord, ...prev]);
-
-    addToast({
-      title: 'Transaction Authorized by Supervisor',
-      message: `₹${req.amount.toLocaleString('en-IN')} approved and settled on Razorpay Testnet.`,
-      type: 'success'
-    });
+      addToast({
+        title: 'Transaction Authorized by Supervisor',
+        message: `₹${req.amount.toLocaleString('en-IN')} approved and settled.`,
+        type: 'success'
+      });
+      
+      fetchLiveState();
+    } catch (e: any) {
+      console.error('Failed to approve request:', e);
+      addToast({ title: 'Error', message: e.message || 'Failed to update review.', type: 'error' });
+    }
   };
 
-  const rejectRequest = (approvalId: string, reason?: string) => {
+  const rejectRequest = async (approvalId: string, reason?: string) => {
     const req = approvals.find(a => a.id === approvalId);
     if (!req) return;
 
-    setApprovals(prev => prev.filter(a => a.id !== approvalId));
+    try {
+      const { data, error } = await supabase.rpc('process_review_decision', {
+        p_review_id: approvalId,
+        p_decision: 'REJECTED',
+        p_reason: reason || 'Rejected by Supervisor'
+      });
 
-    setTransactions(prev => prev.map(tx => {
-      if (tx.id === req.transactionId || tx.amount === req.amount) {
-        return {
-          ...tx,
-          status: 'BLOCKED',
-          reason: reason || 'Supervisor Rejected: Threshold policy breached; proposal declined.',
-        };
-      }
-      return tx;
-    }));
+      if (error) throw error;
 
-    const auditRecord: AuditRecord = {
-      id: `AUD-${Math.floor(10000 + Math.random() * 90000)}`,
-      timestamp: new Date().toLocaleTimeString(),
-      event: 'SUPERVISOR_REJECTION_EXECUTED',
-      actor: 'SUPERVISOR_ADMIN',
-      transactionId: req.transactionId,
-      decision: 'BLOCK',
-      hash: `0x${Math.random().toString(16).substr(2, 12)}`,
-      details: `Supervisor declined approval request ${approvalId}. Transaction cancelled.`
-    };
-    setAuditLogs(prev => [auditRecord, ...prev]);
+      setApprovals(prev => prev.filter(a => a.id !== approvalId));
 
-    addToast({
-      title: 'Request Declined by Supervisor',
-      message: `Approval ${approvalId} rejected. Escrow returned safely.`,
-      type: 'warning'
-    });
+      addToast({
+        title: 'Request Declined by Supervisor',
+        message: `Approval ${approvalId} rejected.`,
+        type: 'warning'
+      });
+      
+      fetchLiveState();
+    } catch (e: any) {
+      console.error('Failed to reject request:', e);
+      addToast({ title: 'Error', message: e.message || 'Failed to update review.', type: 'error' });
+    }
   };
 
   const replayTransaction = (txId: string) => {
@@ -664,13 +953,16 @@ export const GuardrailProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       value={{
         currentNav,
         setCurrentNav,
+        isLiveLoading,
         transactions,
         policies,
         approvals,
         agents,
         auditLogs,
+        analyticsData,
         kpiMetrics,
         revenueData,
+        riskData,
         systemHealth,
         agentAuthority: PRIMARY_AGENT_AUTHORITY,
         notifications,
@@ -690,12 +982,14 @@ export const GuardrailProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsPitchModeOpen,
         globalFilters,
         setGlobalFilters,
+        fetchLiveState,
         triggerScenario,
         approveRequest,
         rejectRequest,
         addNewPolicy,
         updatePolicy,
         toggleAgentStatus,
+        provisionAgent,
         markNotificationAsRead,
         clearAllNotifications,
         resetDemoState,

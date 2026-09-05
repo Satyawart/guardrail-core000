@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Bot, Terminal, ShieldCheck, UserCheck, CreditCard, Key, Lock, Activity, ArrowRight, RefreshCw, CheckCircle } from 'lucide-react';
+import { useGuardrail } from '../../context/GuardrailContext';
+import { formatINR } from '../../utils/formatters';
 
 export interface SubsystemInfo {
   id: string;
@@ -16,164 +18,170 @@ export interface SubsystemInfo {
   metrics: { label: string; value: string }[];
 }
 
-export const SUBSYSTEMS_DATA: SubsystemInfo[] = [
-  {
-    id: 'AGENT_RUNTIME',
-    name: 'AUTONOMOUS AGENT RUNTIME',
-    category: 'AGENT',
-    status: 'ACTIVE',
-    latencyMs: 12,
-    lastEvent: 'AI Buyer #17 dispatched purchase proposal',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'BOUND_SANDBOX',
-    description: '12 enterprise autonomous agents generating continuous commerce intents via tool-use schemas.',
-    metrics: [
-      { label: 'Active Runtimes', value: '12 / 12' },
-      { label: 'Total Allocated Cap', value: '₹16,00,000' },
-      { label: 'Sandbox Isolation', value: 'STRICT' }
-    ]
-  },
-  {
-    id: 'INTENT_PARSER',
-    name: 'INTENT PARSER & NORMALIZER',
-    category: 'INGESTION',
-    status: 'NOMINAL',
-    latencyMs: 8,
-    lastEvent: 'Schema validation completed for ORD-94812',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'SCHEMA_VALID',
-    description: 'Translates unconstrained LLM outputs into deterministic typed financial intent objects.',
-    metrics: [
-      { label: 'Schema Compliance', value: '100.0%' },
-      { label: 'Avg Ingest Latency', value: '8.4ms' },
-      { label: 'Type Stripping', value: 'ENABLED' }
-    ]
-  },
-  {
-    id: 'POLICY_ENGINE',
-    name: 'GUARDRAIL POLICY ENGINE',
-    category: 'GUARDRAIL',
-    status: 'NOMINAL',
-    latencyMs: 4,
-    lastEvent: 'Evaluated POL-001 (Margin floor 15%)',
-    failureCount: 0,
-    policyVersion: 'v4.2.0-STABLE',
-    verificationState: 'DETERMINISTIC_AST',
-    description: 'Compiles natural language rules into deterministic Abstract Syntax Tree expressions. Evaluates in <5ms.',
-    rulesLoaded: ['POL-001 Margin Floor 15%', 'POL-002 Spend Cap Tier-1', 'POL-003 Anomaly Boundary'],
-    metrics: [
-      { label: 'Rules Loaded', value: '14 Active' },
-      { label: 'Determinism Rate', value: '100.0%' },
-      { label: 'Violations Blocked', value: '142' }
-    ]
-  },
-  {
-    id: 'AUTHORITY_SERVICE',
-    name: 'AGENT AUTHORITY SERVICE',
-    category: 'GUARDRAIL',
-    status: 'NOMINAL',
-    latencyMs: 3,
-    lastEvent: 'Checked single-tx cap: ₹3,20,000 <= ₹5,00,000',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'CAPS_ENFORCED',
-    description: 'Maintains hard real-time spend ceilings, discount caps, and velocity throttles per agent identity.',
-    metrics: [
-      { label: 'Spend Governed', value: '₹48.2M' },
-      { label: 'Enforcement Rate', value: '100%' },
-      { label: 'Escrow Lock', value: 'INSTANT' }
-    ]
-  },
-  {
-    id: 'RISK_ENGINE',
-    name: 'MULTI-DIMENSIONAL RISK ENGINE',
-    category: 'GUARDRAIL',
-    status: 'NOMINAL',
-    latencyMs: 6,
-    lastEvent: 'Risk matrix computed score: 0.04 (Low)',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'ANOMALY_PASS',
-    description: 'Real-time composite scoring across velocity, merchant category deviation, and semantic prompt drift.',
-    metrics: [
-      { label: 'Current System Tier', value: '0.06 LOW' },
-      { label: 'Threshold Ceiling', value: '0.70' },
-      { label: 'Headroom', value: '0.64' }
-    ]
-  },
-  {
-    id: 'SUPERVISOR_RELAY',
-    name: 'SUPERVISOR ESCALATION RELAY',
-    category: 'ESCALATION',
-    status: 'STANDBY',
-    latencyMs: 14,
-    lastEvent: 'Escrow held for Support Agent #09 (₹14,500 refund)',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'HUMAN_OVERSIGHT_ACTIVE',
-    description: 'Human-in-the-loop fallback queue. Intercepts threshold exceptions without stalling autonomous traffic.',
-    metrics: [
-      { label: 'Pending Reviews', value: '1 Active' },
-      { label: 'Avg Decision Time', value: '42s' },
-      { label: 'Autonomy Ratio', value: '99.2%' }
-    ]
-  },
-  {
-    id: 'RAZORPAY_TESTNET',
-    name: 'RAZORPAY TESTNET RAILS',
-    category: 'RAILS',
-    status: 'NOMINAL',
-    latencyMs: 28,
-    lastEvent: 'Payment capture order_NYz8923h confirmed',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'HMAC_SHA256_VERIFIED',
-    description: 'Direct payment gateway adapter with testnet token settlement and webhook signature verification.',
-    metrics: [
-      { label: 'API Uptime', value: '99.99%' },
-      { label: 'Gateway Latency', value: '28ms' },
-      { label: 'Signature Proof', value: 'HMAC-SHA256' }
-    ]
-  },
-  {
-    id: 'IDEMPOTENCY_LEDGER',
-    name: 'DISTRIBUTED IDEMPOTENCY LAYER',
-    category: 'LEDGER',
-    status: 'NOMINAL',
-    latencyMs: 5,
-    lastEvent: 'Deduplicated event evt_9918 (0 extra charges)',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'ZERO_DUPLICATES',
-    description: 'Atomic lock mechanism preventing double-debits from network retries, race conditions, or duplicate webhooks.',
-    metrics: [
-      { label: 'Duplicate Attempts Blocked', value: '38' },
-      { label: 'Double Debits', value: '0' },
-      { label: 'Key TTL', value: '86400s' }
-    ]
-  },
-  {
-    id: 'AUDIT_LEDGER',
-    name: 'IMMUTABLE CRYPTOGRAPHIC AUDIT',
-    category: 'LEDGER',
-    status: 'NOMINAL',
-    latencyMs: 4,
-    lastEvent: 'Block #84912 committed with SHA-256 root',
-    failureCount: 0,
-    policyVersion: 'v4.2.0',
-    verificationState: 'MERKLE_PROVED',
-    description: 'Cryptographically hashed ledger recording every decision, policy check, and state transition.',
-    metrics: [
-      { label: 'Audit Records', value: '1,492' },
-      { label: 'Hash Verification', value: '100% VALID' },
-      { label: 'Replay Accuracy', value: '100.0%' }
-    ]
-  }
-];
-
 export const ArchitectureControlPlane: React.FC = () => {
+  const { agents, transactions, auditLogs } = useGuardrail();
+  
+  const totalSpendCap = agents.reduce((sum, a) => sum + (a.spendLimit || 0), 0);
+  const agentCount = agents.length;
+  const auditCount = auditLogs.length;
+  
+  const SUBSYSTEMS_DATA: SubsystemInfo[] = [
+    {
+      id: 'AGENT_RUNTIME',
+      name: 'AUTONOMOUS AGENT RUNTIME',
+      category: 'AGENT',
+      status: 'ACTIVE',
+      latencyMs: 12,
+      lastEvent: 'AI Runtimes managing live commerce intents',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'BOUND_SANDBOX',
+      description: 'Enterprise autonomous agents generating continuous commerce intents via tool-use schemas.',
+      metrics: [
+        { label: 'Active Runtimes', value: `${agentCount} BOUND` },
+        { label: 'Total Allocated Cap', value: formatINR(totalSpendCap) },
+        { label: 'Sandbox Isolation', value: 'STRICT' }
+      ]
+    },
+    {
+      id: 'INTENT_PARSER',
+      name: 'INTENT PARSER & NORMALIZER',
+      category: 'INGESTION',
+      status: 'NOMINAL',
+      latencyMs: 8,
+      lastEvent: 'Schema validation completed for live intents',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'SCHEMA_VALID',
+      description: 'Translates unconstrained LLM outputs into deterministic typed financial intent objects.',
+      metrics: [
+        { label: 'Schema Compliance', value: '100.0%' },
+        { label: 'Avg Ingest Latency', value: 'NOT TRACKED' },
+        { label: 'Type Stripping', value: 'ENABLED' }
+      ]
+    },
+    {
+      id: 'POLICY_ENGINE',
+      name: 'GUARDRAIL POLICY ENGINE',
+      category: 'GUARDRAIL',
+      status: 'NOMINAL',
+      latencyMs: 4,
+      lastEvent: 'Evaluated deterministic policies in real-time',
+      failureCount: 0,
+      policyVersion: 'v4.2.0-STABLE',
+      verificationState: 'DETERMINISTIC_AST',
+      description: 'Compiles natural language rules into deterministic Abstract Syntax Tree expressions. Evaluates in <5ms.',
+      rulesLoaded: ['POL-001 Margin Floor 15%', 'POL-002 Spend Cap Tier-1', 'POL-003 Anomaly Boundary'],
+      metrics: [
+        { label: 'Rules Loaded', value: 'DYNAMIC' },
+        { label: 'Determinism Rate', value: '100.0%' },
+        { label: 'Violations Blocked', value: 'DYNAMIC' }
+      ]
+    },
+    {
+      id: 'AUTHORITY_SERVICE',
+      name: 'AGENT AUTHORITY SERVICE',
+      category: 'GUARDRAIL',
+      status: 'NOMINAL',
+      latencyMs: 3,
+      lastEvent: 'Checked single-tx capability limits',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'CAPS_ENFORCED',
+      description: 'Maintains hard real-time spend ceilings, discount caps, and velocity throttles per agent identity.',
+      metrics: [
+        { label: 'Spend Governed', value: formatINR(totalSpendCap) },
+        { label: 'Enforcement Rate', value: '100%' },
+        { label: 'Escrow Lock', value: 'INSTANT' }
+      ]
+    },
+    {
+      id: 'RISK_ENGINE',
+      name: 'MULTI-DIMENSIONAL RISK ENGINE',
+      category: 'GUARDRAIL',
+      status: 'NOMINAL',
+      latencyMs: 6,
+      lastEvent: 'Risk matrix computed real-time score',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'ANOMALY_PASS',
+      description: 'Real-time composite scoring across velocity, merchant category deviation, and semantic prompt drift.',
+      metrics: [
+        { label: 'Current System Tier', value: 'DYNAMIC' },
+        { label: 'Threshold Ceiling', value: 'DYNAMIC' },
+        { label: 'Headroom', value: 'DYNAMIC' }
+      ]
+    },
+    {
+      id: 'SUPERVISOR_RELAY',
+      name: 'SUPERVISOR ESCALATION RELAY',
+      category: 'ESCALATION',
+      status: 'STANDBY',
+      latencyMs: 14,
+      lastEvent: 'Escrow held pending human review',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'HUMAN_OVERSIGHT_ACTIVE',
+      description: 'Human-in-the-loop fallback queue. Intercepts threshold exceptions without stalling autonomous traffic.',
+      metrics: [
+        { label: 'Pending Reviews', value: 'DYNAMIC' },
+        { label: 'Avg Decision Time', value: 'NOT TRACKED' },
+        { label: 'Autonomy Ratio', value: 'DYNAMIC' }
+      ]
+    },
+    {
+      id: 'RAZORPAY_TESTNET',
+      name: 'RAZORPAY TESTNET RAILS',
+      category: 'RAILS',
+      status: 'NOMINAL',
+      latencyMs: 28,
+      lastEvent: 'Payment capture simulation confirmed',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'HMAC_VERIFIED',
+      description: 'Direct payment gateway adapter with testnet token settlement and webhook signature verification.',
+      metrics: [
+        { label: 'API Uptime', value: 'NOT TRACKED' },
+        { label: 'Gateway Latency', value: 'NOT TRACKED' },
+        { label: 'Signature Proof', value: 'HMAC-SHA256' }
+      ]
+    },
+    {
+      id: 'IDEMPOTENCY_LEDGER',
+      name: 'DISTRIBUTED IDEMPOTENCY LAYER',
+      category: 'LEDGER',
+      status: 'NOMINAL',
+      latencyMs: 5,
+      lastEvent: 'Deduplicated event check',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'ZERO_DUPLICATES',
+      description: 'Atomic lock mechanism preventing double-debits from network retries, race conditions, or duplicate webhooks.',
+      metrics: [
+        { label: 'Duplicate Attempts Blocked', value: 'DYNAMIC' },
+        { label: 'Double Debits', value: '0' },
+        { label: 'Key TTL', value: '86400s' }
+      ]
+    },
+    {
+      id: 'AUDIT_LEDGER',
+      name: 'IMMUTABLE CRYPTOGRAPHIC AUDIT',
+      category: 'LEDGER',
+      status: 'NOMINAL',
+      latencyMs: 4,
+      lastEvent: 'Events committed to cryptographic root',
+      failureCount: 0,
+      policyVersion: 'v4.2.0',
+      verificationState: 'ATTESTED',
+      description: 'Cryptographically hashed ledger recording every decision, policy check, and state transition.',
+      metrics: [
+        { label: 'Audit Records', value: `${auditCount}` },
+        { label: 'Hash Verification', value: '100% VALID' },
+        { label: 'Replay Accuracy', value: '100.0%' }
+      ]
+    }
+  ];
+
   const [selectedSubsystem, setSelectedSubsystem] = useState<SubsystemInfo>(SUBSYSTEMS_DATA[2]);
 
   return (

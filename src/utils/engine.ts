@@ -14,6 +14,8 @@ export type DecisionState = 'PERMIT' | 'REVIEW' | 'BLOCK';
 export interface GuardrailDecisionResult {
   decision: DecisionState;
   finalRiskScore: number;
+  intentId?: string;
+  transactionId?: string;
   details: {
     authority: {
       status: DecisionState;
@@ -21,15 +23,16 @@ export interface GuardrailDecisionResult {
     };
     policies: {
       status: DecisionState;
-      failedPolicyId?: string;
+      failedPolicyVersionId?: string;
       reason?: string;
     };
     risk: {
       status: DecisionState;
       score: number;
+      level?: string;
+      reasons?: string[];
     };
   };
-  transactionId?: string;
 }
 
 /**

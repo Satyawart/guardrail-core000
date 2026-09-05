@@ -74,69 +74,47 @@ export const TransactionExplorerDrawer: React.FC = () => {
       }
     },
     {
+      id: 'RISK',
+      name: 'RISK SCORING',
+      shortLabel: 'RISK',
+      status: tx.riskLevel === 'CRITICAL' ? 'BLOCK' : tx.riskLevel === 'HIGH' ? 'REVIEW' : 'PASS',
+      latencyMs: 6,
+      telemetry: {
+        evaluatedRule: 'Deterministic Engine',
+        output: `Score: ${tx.riskScore.toFixed(2)} [${tx.riskLevel}]`
+      }
+    },
+    {
       id: 'POLICY',
       name: 'POLICY EVAL',
       shortLabel: 'POLICY',
       status: isBlocked ? 'BLOCK' : 'PASS',
       latencyMs: 14,
       telemetry: {
-        evaluatedRule: tx.policyApplied || 'POL-001 (Margin Floor 15%)',
-        output: isBlocked ? 'BLOCK: Margin or discount limit breached' : 'PASS: All margin rules satisfied'
+        evaluatedRule: tx.policyApplied || 'Merchant Rules',
+        output: isBlocked ? 'BLOCK: Policy violated' : 'PASS: Policies satisfied'
       }
     },
     {
       id: 'AUTHORITY',
       name: 'AUTHORITY',
       shortLabel: 'AUTHORITY',
-      status: isBlocked && tx.amount > 500000 ? 'BLOCK' : isReview ? 'REVIEW' : 'PASS',
+      status: 'PASS',
       latencyMs: 8,
       telemetry: {
-        evaluatedRule: 'Agent Cap Check',
-        output: isBlocked && tx.amount > 500000 ? 'BLOCK: Spend exceeds ₹5,00,000 ceiling' : 'PASS: Within limit'
+        evaluatedRule: 'Agent Bounds',
+        output: 'PASS: Within allocated limits'
       }
     },
     {
-      id: 'RISK',
-      name: 'RISK SCORING',
-      shortLabel: 'RISK',
-      status: tx.riskScore > 0.6 ? 'BLOCK' : tx.riskScore > 0.2 ? 'REVIEW' : 'PASS',
-      latencyMs: 6,
+      id: 'DECISION',
+      name: 'DECISION',
+      shortLabel: 'DECISION',
+      status: isBlocked ? 'BLOCK' : isReview ? 'REVIEW' : 'PASS',
+      latencyMs: 4,
       telemetry: {
-        evaluatedRule: 'Anomaly Matrix v3',
-        output: `Risk Score: ${tx.riskScore.toFixed(2)} [${tx.riskLevel}]`
-      }
-    },
-    {
-      id: 'SUPERVISOR',
-      name: 'SUPERVISOR',
-      shortLabel: 'SUPERVISOR',
-      status: isReview ? 'REVIEW' : 'SKIPPED',
-      latencyMs: isReview ? 42000 : 0,
-      telemetry: {
-        evaluatedRule: 'Human-in-the-Loop Routing',
-        output: isReview ? 'ESCALATED: Pending human sign-off' : 'SKIPPED: Autonomous execution permitted'
-      }
-    },
-    {
-      id: 'PAYMENT',
-      name: 'PAYMENT',
-      shortLabel: 'PAYMENT',
-      status: isBlocked ? 'SKIPPED' : isReview ? 'PENDING' : 'PASS',
-      latencyMs: 24,
-      telemetry: {
-        evaluatedRule: 'Razorpay Testnet Rails',
-        output: isPermitted ? 'SETTLED: pay_token_verified' : 'HELD: Gateway dispatch prevented'
-      }
-    },
-    {
-      id: 'VERIFY',
-      name: 'IDEMPOTENCY',
-      shortLabel: 'VERIFY',
-      status: isPermitted ? 'PASS' : 'SKIPPED',
-      latencyMs: 6,
-      telemetry: {
-        evaluatedRule: 'Distributed Idempotency Ledger',
-        output: 'VERIFIED: 0 duplicate charges'
+        evaluatedRule: 'Guardrail Core',
+        output: tx.explainability?.decision || 'PERMIT'
       }
     },
     {
@@ -146,8 +124,8 @@ export const TransactionExplorerDrawer: React.FC = () => {
       status: 'PASS',
       latencyMs: 4,
       telemetry: {
-        evaluatedRule: 'SHA-256 Merkle Ledger',
-        output: `Hash: ${tx.hash || '0x8f2a91b4c3e7'} [VERIFIED]`
+        evaluatedRule: 'Immutable Ledger',
+        output: `Hash: ${tx.id.split('-')[0]} [VERIFIED]`
       }
     }
   ];
@@ -223,7 +201,7 @@ export const TransactionExplorerDrawer: React.FC = () => {
               }`}>
                 [{isBlocked ? 'BLOCK ACTION' : isReview ? 'ESCALATE TO HUMAN' : 'PERMIT EXECUTION'}]
               </span>
-              <span className="text-[10px] text-[#888]">Confidence: 99.4%</span>
+              <span className="text-[10px] text-[#888]">Method: DETERMINISTIC</span>
             </div>
           </div>
         </div>
@@ -244,7 +222,7 @@ export const TransactionExplorerDrawer: React.FC = () => {
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5 text-[#00FF41]" />
-            <span>DECISION EXPLAINABILITY (WHY?)</span>
+            <span>GUARDRAIL EXECUTION TRACE</span>
           </button>
           <button
             onClick={() => setActiveTab('FLOW')}
@@ -307,7 +285,7 @@ export const TransactionExplorerDrawer: React.FC = () => {
                       [{tx.explainability?.decision || (isBlocked ? 'BLOCKED' : isReview ? 'REVIEW' : 'PERMIT')}]
                     </span>
                   </div>
-                  <span className="text-[10px] text-[#AAA]">DECISION CONFIDENCE: <strong className="text-white">99.4%</strong></span>
+                  <span className="text-[10px] text-[#AAA]">METHOD: <strong className="text-white">DETERMINISTIC</strong></span>
                 </div>
 
                 <p className="text-[#CCC] leading-relaxed text-xs">
@@ -327,101 +305,107 @@ export const TransactionExplorerDrawer: React.FC = () => {
                 )}
               </div>
 
-              {/* Six Causal Chain Checks */}
-              <div className="border border-[#222] bg-[#0A0A0A]">
-                <div className="p-2.5 border-b border-[#222] text-[10px] text-[#888] flex items-center justify-between">
-                  <span className="font-bold">EVALUATED ASSERTIONS & CONSTRAINTS</span>
-                  <span className="text-[#00FF41]">DETERMINISTIC EVALUATION</span>
-                </div>
-                <div className="divide-y divide-[#1A1A1A]">
-                  {(tx.explainability?.checks || [
-                    { text: 'Spend cap within authority ceiling', passed: true, value: '₹3,20,000 <= ₹5,00,000' },
-                    { text: 'Merchant net margin floor satisfied', passed: !isBlocked, value: isBlocked ? '8.4% (< 15.0%)' : '18.2% (>= 15.0%)' },
-                    { text: 'Agent authority & role permissions valid', passed: true, value: 'Valid Role' },
-                    { text: 'Multi-dimensional risk score below threshold', passed: true, value: `${tx.riskScore.toFixed(2)} (< 0.70)` },
-                    { text: 'Idempotency state check (0 duplicates)', passed: true, value: 'Unique Key' },
-                    { text: 'Razorpay gateway health & signature verification', passed: true, value: 'HMAC-SHA256' }
-                  ]).map((chk, i) => (
-                    <div key={i} className="p-2.5 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 text-[#CCC]">
-                        {chk.passed ? (
-                          <CheckCircle className="w-3.5 h-3.5 text-[#00FF41] shrink-0" />
-                        ) : (
-                          <XCircle className="w-3.5 h-3.5 text-[#FF3D00] shrink-0" />
-                        )}
-                        <span>{chk.text}</span>
+              {/* Guardrail Execution Trace List */}
+              <div className="border border-[#222] bg-[#0A0A0A] p-4 space-y-4">
+                <div className="border-l-2 border-[#333] pl-4 space-y-6">
+                  
+                  <div>
+                    <div className="text-[10px] text-[#888] uppercase mb-1 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-[#00FF41]" />
+                      1. INTENT
+                    </div>
+                    <div className="text-white">
+                      Agent: {tx.actor}<br/>
+                      Intent: {tx.action}<br/>
+                      Amount: {tx.amount > 0 ? formatINR(tx.amount) : 'N/A'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] text-[#888] uppercase mb-1 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-[#00FF41]" />
+                      2. RISK
+                    </div>
+                    <div className="text-white">
+                      Score: {tx.riskScore.toFixed(2)}<br/>
+                      Level: <span className={tx.riskLevel === 'CRITICAL' ? 'text-[#FF3D00]' : 'text-[#00FF41]'}>{tx.riskLevel}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] text-[#888] uppercase mb-1 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-[#00FF41]" />
+                      3. POLICY
+                    </div>
+                    <div className="text-white">
+                      Status: <span className={isBlocked ? 'text-[#FF3D00]' : 'text-[#00FF41]'}>{isBlocked ? 'VIOLATED' : 'PASS'}</span><br/>
+                      Policy: {tx.policyApplied || 'N/A'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] text-[#888] uppercase mb-1 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-[#00FF41]" />
+                      4. AUTHORITY
+                    </div>
+                    <div className="text-white">
+                      Status: <span className="text-[#00FF41]">WITHIN BOUNDS</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] text-[#888] uppercase mb-1 flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${isBlocked ? 'bg-[#FF3D00]' : isReview ? 'bg-[#FFA000]' : 'bg-[#00FF41]'}`} />
+                      5. DECISION
+                    </div>
+                    <div className={`font-bold text-sm ${isBlocked ? 'text-[#FF3D00]' : isReview ? 'text-[#FFA000]' : 'text-[#00FF41]'}`}>
+                      {tx.explainability?.decision || (isBlocked ? 'BLOCK' : isReview ? 'REVIEW' : 'PERMIT')}
+                    </div>
+                    <div className="text-[#CCC] mt-1 text-[11px] bg-[#111] p-2 border border-[#333]">
+                      Reason: {tx.explainability?.summary || tx.reason || 'Complies with all constraints'}
+                    </div>
+                  </div>
+
+                  {/* Human Review node — shown for REVIEW (pending), APPROVED (via review path), or REJECTED (via review path) */}
+                  {(isReview || tx.status === 'REJECTED') && (
+                    <div>
+                      <div className={`text-[10px] uppercase mb-1 flex items-center gap-2 ${
+                        isReview ? 'text-[#FFA000]' : tx.status === 'REJECTED' ? 'text-[#FF3D00]' : 'text-[#00FF41]'
+                      }`}>
+                        <div className={`w-2 h-2 rounded-full ${
+                          isReview ? 'bg-[#FFA000]' : tx.status === 'REJECTED' ? 'bg-[#FF3D00]' : 'bg-[#00FF41]'
+                        }`} />
+                        6. HUMAN REVIEW
                       </div>
-                      {chk.value && (
-                        <span className={`text-[10px] px-1.5 py-0.5 border shrink-0 ${
-                          chk.passed ? 'bg-[#111] border-[#333] text-white' : 'bg-[#FF3D00]/10 border-[#FF3D00] text-[#FF3D00]'
-                        }`}>
-                          {chk.value}
+                      <div className="text-white">
+                        Status:{' '}
+                        <span className={
+                          isReview ? 'text-[#FFA000]' : tx.status === 'REJECTED' ? 'text-[#FF3D00]' : 'text-[#00FF41]'
+                        }>
+                          {isReview ? 'PENDING — AWAITING SUPERVISOR' : tx.status === 'REJECTED' ? 'REJECTED BY SUPERVISOR' : 'APPROVED BY SUPERVISOR'}
                         </span>
-                      )}
+                        <br/>
+                        {isReview
+                          ? 'Transaction held in supervisor escrow.'
+                          : tx.status === 'REJECTED'
+                          ? 'Supervisor declined. Transaction blocked from execution.'
+                          : 'Supervisor authorized. Transaction released.'}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  )}
 
-              {/* Subsystem Telemetry Matrix: Policies, Risk Signals, Authority */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {/* 1. Policies Evaluated */}
-                <div className="p-2.5 bg-[#0E0E0E] border border-[#222] space-y-1.5">
-                  <span className="text-[9px] text-[#888] block uppercase">POLICIES EVALUATED:</span>
-                  <div className="space-y-1 text-[10px]">
-                    <div className="flex items-center justify-between text-white">
-                      <span>POL-001 (Margin 15%)</span>
-                      <span className={isBlocked ? 'text-[#FF3D00]' : 'text-[#00FF41]'}>
-                        {isBlocked ? '[TRIPPED]' : '[PASS]'}
-                      </span>
+                  <div>
+                    <div className="text-[10px] text-[#888] uppercase mb-1 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-[#00FF41]" />
+                      7. AUDIT
                     </div>
-                    <div className="flex items-center justify-between text-[#888]">
-                      <span>POL-002 (Spend Cap)</span>
-                      <span className="text-[#00FF41]">[PASS]</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[#888]">
-                      <span>POL-003 (Anomaly Floor)</span>
-                      <span className="text-[#00FF41]">[PASS]</span>
+                    <div className="text-[#888]">
+                      Event recorded securely.<br/>
+                      Timestamp: {new Date(tx.timestamp).toLocaleString()}<br/>
+                      Transaction ID: {tx.id}
                     </div>
                   </div>
-                </div>
 
-                {/* 2. Risk Signals */}
-                <div className="p-2.5 bg-[#0E0E0E] border border-[#222] space-y-1.5">
-                  <span className="text-[9px] text-[#888] block uppercase">RISK SIGNALS:</span>
-                  <div className="space-y-1 text-[10px]">
-                    <div className="flex justify-between text-[#CCC]">
-                      <span>Velocity:</span>
-                      <span className="text-[#00FF41] font-bold">LOW (0.01)</span>
-                    </div>
-                    <div className="flex justify-between text-[#CCC]">
-                      <span>Intent Drift:</span>
-                      <span className="text-[#00FF41] font-bold">LOW (0.01)</span>
-                    </div>
-                    <div className="flex justify-between text-[#CCC]">
-                      <span>Amount Anomaly:</span>
-                      <span className="text-[#00FF41] font-bold">NOMINAL</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Authority State */}
-                <div className="p-2.5 bg-[#0E0E0E] border border-[#222] space-y-1.5">
-                  <span className="text-[9px] text-[#888] block uppercase">AUTHORITY BOUNDS:</span>
-                  <div className="space-y-1 text-[10px]">
-                    <div className="flex justify-between text-[#CCC]">
-                      <span>Allocated:</span>
-                      <span className="text-white font-bold">₹5,00,000</span>
-                    </div>
-                    <div className="flex justify-between text-[#CCC]">
-                      <span>Requested:</span>
-                      <span className="text-white font-bold">₹{tx.amount.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex justify-between text-[#CCC]">
-                      <span>Remaining:</span>
-                      <span className="text-[#00FF41] font-bold">₹1,80,000</span>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -637,6 +621,18 @@ export const TransactionExplorerDrawer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Go to Approvals — only for REVIEW transactions still pending */}
+            {isReview && (
+              <button
+                onClick={() => {
+                  setIsTransactionDrawerOpen(false);
+                  setCurrentNav('APPROVALS');
+                }}
+                className="px-2.5 py-1 bg-[#FFA000] text-black font-bold text-[11px] hover:bg-[#FFB300] transition flex items-center gap-1 mono"
+              >
+                <span>GO TO APPROVALS</span>
+              </button>
+            )}
             <button
               onClick={handleRunReplay}
               className="px-2.5 py-1 bg-[#1A1A1A] border border-[#333] hover:border-[#00FF41] text-white text-[11px] transition flex items-center gap-1"

@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { ApprovalRequest } from '../../types';
-import { INITIAL_APPROVALS } from '../../data/mockData';
+import React from 'react';
+import { useGuardrail } from '../../context/GuardrailContext';
 import { formatINR } from '../../utils/formatters';
 import { X, Check, ShieldAlert, Clock, AlertTriangle } from 'lucide-react';
 
@@ -17,14 +16,20 @@ export const ApprovalCenterModal: React.FC<ApprovalCenterModalProps> = ({
   onApprove,
   onReject
 }) => {
-  const [requests, setRequests] = useState<ApprovalRequest[]>(INITIAL_APPROVALS);
+  const { approvals, approveRequest, rejectRequest } = useGuardrail();
+  const requests = approvals.filter(a => a.status === 'PENDING');
 
   if (!isOpen) return null;
 
   const handleAction = (id: string, action: 'APPROVED' | 'REJECTED') => {
-    setRequests(requests.filter(r => r.id !== id));
-    if (action === 'APPROVED' && onApprove) onApprove(id);
-    if (action === 'REJECTED' && onReject) onReject(id);
+    if (action === 'APPROVED') {
+      approveRequest(id);
+      if (onApprove) onApprove(id);
+    }
+    if (action === 'REJECTED') {
+      rejectRequest(id, 'Declined via Supervisor Modal');
+      if (onReject) onReject(id);
+    }
   };
 
   return (

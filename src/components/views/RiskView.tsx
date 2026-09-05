@@ -2,25 +2,28 @@ import React, { useState } from 'react';
 import { useGuardrail } from '../../context/GuardrailContext';
 import { Activity, ShieldAlert, AlertTriangle, CheckCircle, TrendingUp, Cpu, Gauge, HelpCircle, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
+import { RiskComponent } from '../../types';
 
 export const RiskView: React.FC = () => {
-  const { transactions, setSelectedTransaction, setIsTransactionDrawerOpen } = useGuardrail();
-  const [selectedScore, setSelectedScore] = useState<number>(0.04);
+  const { transactions, setSelectedTransaction, setIsTransactionDrawerOpen, riskData, isLiveLoading } = useGuardrail();
   const [showWhyModal, setShowWhyModal] = useState<boolean>(false);
   const [expandedSignalIndex, setExpandedSignalIndex] = useState<number | null>(null);
 
   const threshold = 0.70;
-  const headroom = (threshold - selectedScore).toFixed(2);
+  
+  // Use live risk intelligence data
+  const displayScore = riskData?.averageScore ?? 0;
+  const headroom = (threshold - displayScore).toFixed(2);
+  const riskComponents = riskData?.components ?? [];
+  const compositeScore = displayScore.toFixed(2);
 
-  const riskComponents = [
-    { name: 'Velocity', score: 0.01, max: 0.25, status: 'LOW', details: 'Transaction frequency (1 tx/2min) is well within normal 3-sigma standard deviation for AI Agent #17.' },
-    { name: 'Intent Drift', score: 0.01, max: 0.25, status: 'LOW', details: 'Vector embedding cosine distance between procurement task specification and executed checkout action is 0.012 (extremely tight semantic alignment).' },
-    { name: 'Amount Anomaly', score: 0.00, max: 0.20, status: 'ZERO', details: 'Order volume matches historical SKU baseline within ±4.2% variance.' },
-    { name: 'Merchant Risk', score: 0.00, max: 0.15, status: 'ZERO', details: 'Merchant account is whitelisted enterprise Tier-1 vendor with active KYC validation.' },
-    { name: 'Payment Risk', score: 0.02, max: 0.15, status: 'LOW', details: 'Razorpay testnet token routing verified with HMAC-SHA256 signature and fresh nonce.' }
-  ];
-
-  const compositeScore = riskComponents.reduce((acc, c) => acc + c.score, 0).toFixed(2);
+  if (isLiveLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-[#00FF41] mono animate-pulse">
+        [INITIALIZING RISK VECTORS...]
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
@@ -31,7 +34,7 @@ export const RiskView: React.FC = () => {
             <span className="w-2.5 h-2.5 bg-[#00FF41]" />
             <h1 className="text-base font-bold mono text-white tracking-wider">MULTI-DIMENSIONAL RISK ENGINE</h1>
             <span className="text-[10px] mono px-2 py-0.5 bg-[#1A1A1A] border border-[#00FF41] text-[#00FF41]">
-              RISK SCORE 0.04 LOW
+              RISK SCORE {compositeScore} {displayScore > 0.5 ? 'HIGH' : displayScore > 0.2 ? 'MEDIUM' : 'LOW'}
             </span>
           </div>
           <p className="text-xs mono text-[#888] mt-1">
@@ -73,10 +76,12 @@ export const RiskView: React.FC = () => {
         <div className="p-4 bg-[#0E0E0E] border border-[#222] space-y-1">
           <span className="text-[10px] text-[#888] block uppercase">SAFETY HEADROOM</span>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-[#00FF41]">0.66</span>
-            <span className="text-xs px-2 py-0.5 bg-[#00FF41]/10 border border-[#00FF41] text-[#00FF41] font-bold">NOMINAL</span>
+            <span className="text-2xl font-black text-[#00FF41]">{headroom}</span>
+            <span className="text-xs px-2 py-0.5 bg-[#00FF41]/10 border border-[#00FF41] text-[#00FF41] font-bold">
+              {Number(headroom) > 0.4 ? 'NOMINAL' : Number(headroom) > 0.2 ? 'MODERATE' : 'CRITICAL'}
+            </span>
           </div>
-          <span className="text-[10px] text-[#666] block">66% buffer before supervisor escalation</span>
+          <span className="text-[10px] text-[#666] block">{(Number(headroom) * 100).toFixed(0)}% buffer before supervisor escalation</span>
         </div>
       </div>
 
@@ -87,17 +92,19 @@ export const RiskView: React.FC = () => {
             <Gauge className="w-4 h-4 text-[#00FF41]" />
             REAL-TIME RISK TRAJECTORY GAUGE
           </span>
-          <span className="text-[10px] text-[#888]">CURRENT EVALUATION: 0.04 (LOW) | THRESHOLD: 0.70</span>
+          <span className="text-[10px] text-[#888]">
+            CURRENT EVALUATION: {compositeScore} ({displayScore > 0.5 ? 'HIGH' : displayScore > 0.2 ? 'MEDIUM' : 'LOW'}) | THRESHOLD: {threshold.toFixed(2)}
+          </span>
         </div>
 
         <div className="relative pt-6 pb-2">
           {/* Active Score Pointer */}
           <div 
             className="absolute top-0 -translate-x-1/2 flex flex-col items-center transition-all duration-500 z-10"
-            style={{ left: `${selectedScore * 100}%` }}
+            style={{ left: `${displayScore * 100}%` }}
           >
             <span className="text-[10px] bg-[#00FF41] text-black font-black px-1.5 py-0.2 mb-0.5">
-              {selectedScore.toFixed(2)} LOW
+              {compositeScore} {displayScore > 0.5 ? 'HIGH' : displayScore > 0.2 ? 'MEDIUM' : 'LOW'}
             </span>
             <div className="w-0 h-0 border-l-4 border-l-transparent border-r-4 border-r-transparent border-t-4 border-t-[#00FF41]" />
           </div>
@@ -129,7 +136,7 @@ export const RiskView: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          {riskComponents.map((comp, idx) => (
+          {riskComponents.map((comp: RiskComponent, idx: number) => (
             <div 
               key={idx}
               className="p-3 bg-[#0A0A0A] border border-[#222] hover:border-[#333] transition"
@@ -169,7 +176,7 @@ export const RiskView: React.FC = () => {
           <div className="flex items-center justify-between border-b border-[#00FF41]/30 pb-2">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-[#00FF41]" />
-              <span className="font-bold text-white text-sm">WHY IS THIS SCORE 0.04 (LOW)?</span>
+              <span className="font-bold text-white text-sm">WHY IS THIS SCORE {compositeScore} ({displayScore > 0.5 ? 'HIGH' : displayScore > 0.2 ? 'MEDIUM' : 'LOW'})?</span>
             </div>
             <button
               onClick={() => setShowWhyModal(false)}
@@ -184,16 +191,16 @@ export const RiskView: React.FC = () => {
           </p>
 
           <ul className="space-y-1.5 text-[11px] text-[#AAA] list-disc list-inside">
-            <li><strong className="text-white">Velocity (0.01):</strong> Frequency of transactions matches the expected distribution of 1 action per 2 minutes.</li>
-            <li><strong className="text-white">Intent Drift (0.01):</strong> Semantic comparison of LLM prompts vs tool invocation parameters shows 98.8% cosine similarity.</li>
-            <li><strong className="text-white">Amount Anomaly (0.00):</strong> Order amounts are well within historical procurement bounds for this SKU.</li>
-            <li><strong className="text-white">Merchant Risk (0.00):</strong> Validated Tier-1 merchant registered in enterprise whitelist.</li>
-            <li><strong className="text-white">Payment Risk (0.02):</strong> Razorpay Testnet API signature verified with 0 HMAC errors.</li>
+            {riskComponents.map((comp: RiskComponent, idx: number) => (
+              <li key={idx}>
+                <strong className="text-white">{comp.name} ({comp.score.toFixed(2)}):</strong> {comp.details}
+              </li>
+            ))}
           </ul>
 
           <div className="p-2.5 bg-[#0A0A0A] border border-[#00FF41]/40 flex items-center justify-between text-[11px]">
-            <span className="text-[#00FF41] font-bold">TOTAL SCORE: 0.04</span>
-            <span className="text-[#888]">THRESHOLD: 0.70 | HEADROOM: 0.66 (SAFE)</span>
+            <span className="text-[#00FF41] font-bold">TOTAL SCORE: {compositeScore}</span>
+            <span className="text-[#888]">THRESHOLD: {threshold.toFixed(2)} | HEADROOM: {headroom} (SAFE)</span>
           </div>
         </div>
       )}
@@ -210,7 +217,6 @@ export const RiskView: React.FC = () => {
             <div 
               key={tx.id}
               onClick={() => {
-                setSelectedScore(tx.riskScore);
                 setSelectedTransaction(tx);
                 setIsTransactionDrawerOpen(true);
               }}

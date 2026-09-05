@@ -6,6 +6,7 @@ import { Transaction } from '../../types';
 export const TransactionsView: React.FC = () => {
   const { 
     transactions, 
+    agents,
     setSelectedTransaction, 
     setIsTransactionDrawerOpen,
     replayTransaction,
@@ -115,10 +116,9 @@ export const TransactionsView: React.FC = () => {
             className="bg-transparent text-white outline-none w-full text-xs"
           >
             <option value="ALL" className="bg-[#111]">ALL RUNTIMES</option>
-            <option value="AGENT_BUYER_17" className="bg-[#111]">AI Buyer #17</option>
-            <option value="AGENT_NEGOTIATOR_04" className="bg-[#111]">Negotiator #04</option>
-            <option value="AGENT_SUPPORT_09" className="bg-[#111]">Support Agent #09</option>
-            <option value="RAZORPAY_WEBHOOK" className="bg-[#111]">Razorpay Webhook</option>
+            {agents.map((ag) => (
+              <option key={ag.id} value={ag.id} className="bg-[#111]">{ag.name} ({ag.id})</option>
+            ))}
           </select>
         </div>
       </div>

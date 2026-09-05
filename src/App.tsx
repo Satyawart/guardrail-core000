@@ -30,7 +30,7 @@ import { RevenueView } from './components/views/RevenueView';
 import { AuditView } from './components/views/AuditView';
 import { SystemView } from './components/views/SystemView';
 import { BeforeAfterView } from './components/views/BeforeAfterView';
-import { LiveEngineTestButton } from './components/LiveEngineTestButton';
+import { LiveTransactionSimulator } from './components/LiveTransactionSimulator';
 
 const DashboardContent: React.FC = () => {
   const { 
@@ -41,7 +41,8 @@ const DashboardContent: React.FC = () => {
     setIsTransactionDrawerOpen,
     kpiMetrics,
     revenueData,
-    agentAuthority
+    agentAuthority,
+    isLiveLoading
   } = useGuardrail();
 
   const [activeSystemNode, setActiveSystemNode] = useState<string | null>('AI_REASONING');
@@ -56,6 +57,17 @@ const DashboardContent: React.FC = () => {
 
   // Render view depending on navigation
   const renderCurrentView = () => {
+    if (isLiveLoading) {
+      return (
+        <div className="h-full flex items-center justify-center min-h-[500px]">
+          <div className="animate-pulse flex flex-col items-center">
+            <div className="h-10 w-10 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
+            <p className="mt-4 text-blue-500 font-mono text-xs tracking-widest uppercase">SYNCING LIVE DATABASE...</p>
+          </div>
+        </div>
+      );
+    }
+
     switch (currentNav) {
       case 'AGENTS':
         return <AgentsView />;
@@ -103,17 +115,25 @@ const DashboardContent: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 w-full items-stretch">
               {/* Left: AI Agent in Action Harness */}
               <div className="lg:col-span-4 h-full min-h-[360px]">
-                <AIAgentInAction
-                  activeTransaction={activeHarnessTx}
-                  onInspectDetails={() => handleOpenTransactionDrawer(activeHarnessTx)}
-                />
+                {activeHarnessTx ? (
+                  <AIAgentInAction
+                    activeTransaction={activeHarnessTx}
+                    onInspectDetails={() => handleOpenTransactionDrawer(activeHarnessTx)}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center border border-white/5 bg-[#0a0a0a] rounded-lg p-6 text-center">
+                     <p className="text-white/40 font-mono text-xs tracking-wider">AWAITING LIVE TRANSACTION</p>
+                  </div>
+                )}
               </div>
 
               {/* Center: GuardrailCore3D Holographic Visualizer */}
               <div className="lg:col-span-4 h-full min-h-[360px]">
                 <GuardrailCore3D
                   statusText={
-                    activeHarnessTx.status === 'BLOCKED'
+                    !activeHarnessTx
+                      ? 'AI ALIGNMENT STATE: IDLE'
+                      : activeHarnessTx.status === 'BLOCKED'
                       ? 'AI ALIGNMENT STATE: ACTION HALTED'
                       : activeHarnessTx.status === 'REVIEW'
                       ? 'AI ALIGNMENT STATE: SUPERVISOR ESCALATION'
@@ -167,7 +187,8 @@ const DashboardContent: React.FC = () => {
   return (
     <AppShell>
       {renderCurrentView()}
-      <LiveEngineTestButton />
+      {/* Live Transaction Simulator */}
+      <LiveTransactionSimulator />
     </AppShell>
   );
 };

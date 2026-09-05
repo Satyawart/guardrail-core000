@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
+import { useGuardrail } from '../../context/GuardrailContext';
 import { PolicyRule } from '../../types';
-import { INITIAL_POLICIES } from '../../data/mockData';
 import { X, Plus, ShieldCheck, Code, Sparkles, CheckCircle2 } from 'lucide-react';
 
 interface PolicyStudioModalProps {
@@ -14,7 +14,7 @@ export const PolicyStudioModal: React.FC<PolicyStudioModalProps> = ({
   onClose,
   onAddPolicy
 }) => {
-  const [policies, setPolicies] = useState<PolicyRule[]>(INITIAL_POLICIES);
+  const { policies, addNewPolicy } = useGuardrail();
   const [prompt, setPrompt] = useState('');
   const [isCompiling, setIsCompiling] = useState(false);
   const [compiledRule, setCompiledRule] = useState<string | null>(null);
@@ -32,17 +32,12 @@ export const PolicyStudioModal: React.FC<PolicyStudioModalProps> = ({
 
   const handleSavePolicy = () => {
     if (!prompt.trim()) return;
-    const newPol: PolicyRule = {
-      id: `pol_custom_${Date.now()}`,
+    const newPol = addNewPolicy({
       name: prompt.slice(0, 40) + '...',
       naturalLanguage: prompt,
       category: 'MARGIN',
-      status: 'ACTIVE',
-      version: 'v4.2.1',
-      enforcementCount: 0,
-      codeSnippet: compiledRule || 'if (margin < 0.15) return BLOCK()'
-    };
-    setPolicies([newPol, ...policies]);
+      codeSnippet: compiledRule || 'if (margin < 0.15) return BLOCK("MARGIN_VIOLATION");'
+    });
     if (onAddPolicy) onAddPolicy(newPol);
     setPrompt('');
     setCompiledRule(null);

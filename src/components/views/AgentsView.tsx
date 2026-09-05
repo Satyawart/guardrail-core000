@@ -2,13 +2,18 @@ import React, { useState } from 'react';
 import { useGuardrail } from '../../context/GuardrailContext';
 import { AgentRuntime } from '../../types';
 import { AgentProfileDrawer } from '../modals/AgentProfileDrawer';
-import { Bot, ShieldCheck, Pause, Play, AlertOctagon, Terminal, ArrowRight, Activity, Clock, Sliders, ExternalLink } from 'lucide-react';
+import { AgentProvisionModal } from '../modals/AgentProvisionModal';
+import { Bot, ShieldCheck, Pause, Play, AlertOctagon, Terminal, ArrowRight, Activity, Clock, Sliders, ExternalLink, Plus } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { formatINR } from '../../utils/formatters';
 
 export const AgentsView: React.FC = () => {
   const { agents, toggleAgentStatus, addToast } = useGuardrail();
   const [selectedAgentForDrawer, setSelectedAgentForDrawer] = useState<AgentRuntime | null>(null);
+  const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
+
+  const totalSpendCap = agents.reduce((sum, a) => sum + (a.spendLimit || 0), 0);
+
 
   const handleToggleAgent = (agent: AgentRuntime) => {
     const nextStatus = agent.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
@@ -29,6 +34,12 @@ export const AgentsView: React.FC = () => {
         onClose={() => setSelectedAgentForDrawer(null)}
       />
 
+      {/* Agent Provision Modal */}
+      <AgentProvisionModal
+        isOpen={isProvisionModalOpen}
+        onClose={() => setIsProvisionModalOpen(false)}
+      />
+
       {/* Top Banner / Heading */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#0E0E0E] border border-[#222]">
         <div>
@@ -36,7 +47,7 @@ export const AgentsView: React.FC = () => {
             <span className="w-2.5 h-2.5 bg-[#00FF41]" />
             <h1 className="text-base font-bold mono text-white tracking-wider">AI AGENT AUTHORITY & DIGITAL TWIN PROFILES</h1>
             <span className="text-[10px] mono px-2 py-0.5 bg-[#1A1A1A] border border-[#333] text-[#00FF41]">
-              12 BOUND RUNTIMES
+              {agents.length} BOUND RUNTIMES
             </span>
           </div>
           <p className="text-xs mono text-[#888] mt-1">
@@ -44,11 +55,18 @@ export const AgentsView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 text-xs mono text-[#888]">
+        <div className="flex items-center gap-4 text-xs mono text-[#888]">
           <div className="text-right">
             <span className="block text-[10px]">TOTAL GOVERNED SPEND CAP</span>
-            <span className="text-white font-bold text-sm">₹16,00,000</span>
+            <span className="text-white font-bold text-sm">{formatINR(totalSpendCap)}</span>
           </div>
+          <button
+            onClick={() => setIsProvisionModalOpen(true)}
+            className="px-4 py-2 bg-[#00FF41] hover:bg-[#00CC33] text-black font-bold text-xs mono transition flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>PROVISION NEW AGENT</span>
+          </button>
         </div>
       </div>
 

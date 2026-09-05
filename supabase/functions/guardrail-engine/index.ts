@@ -1,32 +1,63 @@
+// @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-ignore
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "./cors.ts";
 import { EngineRequestPayload, GuardrailDecisionResult } from "./types.ts";
 import { evaluateAuthority, evaluatePolicies, evaluateRisk } from "./rules.ts";
 
-serve(async (req) => {
+// @ts-ignore
+declare const Deno: any;
+
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     const payload = (await req.json()) as EngineRequestPayload;
-    
+
+    if (!payload.agentId || !payload.intent || typeof payload.proposedAmount !== 'number' || payload.proposedAmount < 0 || typeof payload.proposedDiscount !== 'number' || !payload.idempotencyKey) {
+      return new Response(JSON.stringify({ error: 'Invalid or malformed payload' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Instantiate Supabase client using the provided user JWT
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Missing Authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    // 1. Resolve Auth Merchant (Proves RLS works)
+    // 1. Resolve Auth Merchant — server-side, never trusted from payload
     const { data: merchantId, error: rpcError } = await supabaseClient.rpc('auth_merchant_id');
     if (rpcError || !merchantId) {
       throw new Error(`Unauthorized or unmapped tenant: ${rpcError?.message}`);
     }
 
-    // 2. Fetch Agent Authority
+    // 2. Fetch Agent Record (enforce tenancy and lifecycle)
+    const { data: agent, error: agentError } = await supabaseClient
+      .from('agents')
+      .select('*')
+      .eq('id', payload.agentId)
+      .eq('merchant_id', merchantId)
+      .single();
+    
+    if (agentError || !agent) {
+      throw new Error(`Agent not found or unauthorized: ${agentError?.message}`);
+    }
+
+    // 3. Fetch Agent Authority
     const { data: authority, error: authError } = await supabaseClient
       .from('agent_authority')
       .select('*')
@@ -34,19 +65,37 @@ serve(async (req) => {
       .eq('merchant_id', merchantId)
       .single();
 
-    // 3. Fetch Active Policies (case-insensitive: handles 'ACTIVE' or 'active')
+    // 4. Fetch Active Policies
     const { data: policies, error: polError } = await supabaseClient
       .from('policies')
-      .select('id, category, status, name, policy_versions(version_number, configuration)')
+      .select('id, category, status, name, policy_versions(id, version_number, configuration)')
       .eq('merchant_id', merchantId)
       .ilike('status', 'active');
 
-    // 4. Run Evaluations
+    // 5. Pre-check Idempotency (prevent orphan intents)
+    const { data: existingTx, error: existError } = await supabaseClient
+      .from('transactions')
+      .select('id, status')
+      .eq('merchant_id', merchantId)
+      .eq('idempotency_key', payload.idempotencyKey)
+      .maybeSingle();
+
+    if (existError) {
+      throw new Error(`Database error during idempotency check: ${existError.message}`);
+    }
+    if (existingTx) {
+      return new Response(JSON.stringify({ error: 'Duplicate idempotency key' }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 6. Run Evaluations
     const authEval = evaluateAuthority(payload.proposedAmount, payload.proposedDiscount, authority);
     const polEval = evaluatePolicies(payload.proposedAmount, payload.estimatedCostBasis, policies || []);
-    const riskEval = evaluateRisk(payload.agentId, {});
+    const riskEval = evaluateRisk(agent, payload, authority);
 
-    // 5. Synthesize Final Decision
+    // 7. Synthesize Final Decision
     let finalDecision: 'PERMIT' | 'REVIEW' | 'BLOCK' = 'PERMIT';
     if (authEval.status === 'BLOCK' || polEval.status === 'BLOCK' || riskEval.status === 'BLOCK') {
       finalDecision = 'BLOCK';
@@ -54,16 +103,36 @@ serve(async (req) => {
       finalDecision = 'REVIEW';
     }
 
-    // 6. DB Sequence: Write to ledger
-    // Using sequential inserts for Phase 7 (production would use a stored procedure for full ACID tx)
+    // 8. DB Sequence: Write to ledger (Fail-closed)
     
-    // a. Insert transaction
-    // Schema columns: id, intent_id, merchant_id, agent_id, amount, currency, status,
-    //                 idempotency_key, created_at, updated_at
-    // NOTE: No 'metadata' column exists — intent description is not persisted here.
+    // a. Insert Intent
+    const { data: intent, error: intentError } = await supabaseClient
+      .from('intents')
+      .insert({
+        agent_id: payload.agentId,
+        merchant_id: merchantId,
+        description: payload.intent,
+        structured_data: {
+          proposedAmount: payload.proposedAmount,
+          proposedDiscount: payload.proposedDiscount,
+          estimatedCostBasis: payload.estimatedCostBasis,
+          idempotencyKey: payload.idempotencyKey
+        }
+      })
+      .select('id')
+      .single();
+
+    if (intentError) {
+      throw new Error(`Intent creation failed: ${intentError.message}`);
+    }
+
+    const intentId = intent.id;
+
+    // b. Insert Transaction
     const { data: tx, error: txError } = await supabaseClient
       .from('transactions')
       .insert({
+        intent_id: intentId,
         merchant_id: merchantId,
         agent_id: payload.agentId,
         amount: payload.proposedAmount,
@@ -76,54 +145,73 @@ serve(async (req) => {
 
     if (txError) {
       if (txError.code === '23505') {
-        // Unique constraint on idempotency_key
-        return new Response(JSON.stringify({ error: 'Duplicate idempotency key' }), { 
-          status: 409, 
+        return new Response(JSON.stringify({ error: 'Duplicate idempotency key' }), {
+          status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
-      throw txError;
+      throw new Error(`Transaction creation failed: ${txError.message}`);
     }
 
     const transactionId = tx.id;
 
-    // b. Insert Policy Evaluations
-    // Schema columns: transaction_id, merchant_id, policy_version_id (NOT NULL), result, violation_details
-    // NOTE: policy_version_id is required. We skip the insert if no policy_version_id is available
-    //       (e.g. PERMIT path where no policy was violated). This prevents a NOT NULL constraint error.
+    // c. Insert Risk Evaluation
+    const { error: riskInsertError } = await supabaseClient.from('risk_evaluations').insert({
+      merchant_id: merchantId,
+      transaction_id: transactionId,
+      risk_score: riskEval.score,
+      risk_level: riskEval.level,
+      indicators: {
+        agentRiskScore: parseFloat(agent.risk_score || '0'),
+        amountUtilization: authority?.spend_limit ? payload.proposedAmount / parseFloat(authority.spend_limit) : 0,
+        discountUtilization: authority?.discount_max_percent ? payload.proposedDiscount / parseFloat(authority.discount_max_percent) : 0,
+        agentStatus: agent.status,
+        reasons: riskEval.reasons
+      }
+    });
+    if (riskInsertError) {
+      throw new Error(`Risk evaluation persistence failed: ${riskInsertError.message}`);
+    }
+
+    // d. Insert Policy Evaluations (BLOCK path only)
     if (polEval.failedPolicyVersionId) {
-      await supabaseClient.from('policy_evaluations').insert({
+      const { error: polEvalInsertError } = await supabaseClient.from('policy_evaluations').insert({
         merchant_id: merchantId,
         transaction_id: transactionId,
         policy_version_id: polEval.failedPolicyVersionId,
         result: polEval.status,
         violation_details: polEval.reason ? { reason: polEval.reason } : null
       });
+      if (polEvalInsertError) {
+        throw new Error(`Policy evaluation persistence failed: ${polEvalInsertError.message}`);
+      }
     }
 
-    // c. Insert Guardrail Decision
-    await supabaseClient.from('guardrail_decisions').insert({
+    // e. Insert Guardrail Decision
+    const { error: decisionInsertError } = await supabaseClient.from('guardrail_decisions').insert({
       merchant_id: merchantId,
       transaction_id: transactionId,
       decision: finalDecision,
       reason: authEval.reason || polEval.reason || 'Transaction cleared safely.'
     });
+    if (decisionInsertError) {
+      throw new Error(`Guardrail decision persistence failed: ${decisionInsertError.message}`);
+    }
 
-    // d. Insert Human Review (if REVIEW)
+    // f. Insert Human Review (REVIEW path only)
     if (finalDecision === 'REVIEW') {
-      await supabaseClient.from('human_reviews').insert({
+      const { error: reviewInsertError } = await supabaseClient.from('human_reviews').insert({
         merchant_id: merchantId,
         transaction_id: transactionId,
         status: 'PENDING'
       });
+      if (reviewInsertError) {
+        throw new Error(`Human review persistence failed: ${reviewInsertError.message}`);
+      }
     }
 
-    // e. Insert Audit Event
-    // Schema columns: merchant_id, entity_type (NOT NULL), entity_id (NOT NULL), transaction_id,
-    //                 event_type (NOT NULL), actor_type (NOT NULL), actor_id, metadata (JSONB)
-    // NOTE: Removed nonexistent 'decision' and 'details' columns.
-    //       entity_type = 'TRANSACTION', entity_id = the transaction UUID.
-    await supabaseClient.from('audit_events').insert({
+    // g. Insert Audit Event
+    const { error: auditInsertError } = await supabaseClient.from('audit_events').insert({
       merchant_id: merchantId,
       entity_type: 'TRANSACTION',
       entity_id: transactionId,
@@ -133,14 +221,27 @@ serve(async (req) => {
       actor_id: payload.agentId,
       metadata: {
         decision: finalDecision,
-        intent: payload.intent
+        intent: payload.intent,
+        intentId,
+        transactionId,
+        agentId: payload.agentId,
+        proposedAmount: payload.proposedAmount,
+        proposedDiscount: payload.proposedDiscount,
+        riskScore: riskEval.score,
+        riskLevel: riskEval.level,
+        policyStatus: polEval.status,
+        authorityStatus: authEval.status
       }
     });
+    if (auditInsertError) {
+      throw new Error(`Audit event persistence failed: ${auditInsertError.message}`);
+    }
 
     // Return the synthesized result
     const result: GuardrailDecisionResult = {
       decision: finalDecision,
       finalRiskScore: riskEval.score,
+      intentId,
       transactionId,
       details: {
         authority: authEval,

@@ -5,10 +5,15 @@ import { ApprovalRequest } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
 
 export const ApprovalsView: React.FC = () => {
-  const { approvals, approveRequest, rejectRequest } = useGuardrail();
+  const { approvals, approveRequest, rejectRequest, transactions, setSelectedTransaction, setIsTransactionDrawerOpen } = useGuardrail();
   const [confirmingApproval, setConfirmingApproval] = useState<ApprovalRequest | null>(null);
   const [rejectingApproval, setRejectingApproval] = useState<ApprovalRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+
+  const pendingApprovals = approvals.filter(a => a.status === 'PENDING');
+  const totalDecisions = transactions.length;
+  const autonomousDecisions = Math.max(0, totalDecisions - approvals.length);
+  const safeAutonomyRatio = totalDecisions > 0 ? ((autonomousDecisions / totalDecisions) * 100).toFixed(1) : '100.0';
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
@@ -19,9 +24,9 @@ export const ApprovalsView: React.FC = () => {
             <span className="w-2.5 h-2.5 bg-[#FF3D00]" />
             <h1 className="text-base font-bold mono text-white tracking-wider">SUPERVISOR APPROVAL QUEUE</h1>
             <span className={`text-[10px] mono px-2 py-0.5 border ${
-              approvals.length > 0 ? 'bg-[#FF3D00]/10 border-[#FF3D00] text-[#FF3D00]' : 'bg-[#00FF41]/10 border-[#00FF41] text-[#00FF41]'
+              pendingApprovals.length > 0 ? 'bg-[#FF3D00]/10 border-[#FF3D00] text-[#FF3D00]' : 'bg-[#00FF41]/10 border-[#00FF41] text-[#00FF41]'
             }`}>
-              {approvals.length} PENDING DECISIONS
+              {pendingApprovals.length} PENDING DECISIONS
             </span>
           </div>
           <p className="text-xs mono text-[#888] mt-1">
@@ -33,12 +38,12 @@ export const ApprovalsView: React.FC = () => {
         <div className="p-2.5 bg-[#141414] border border-[#222] flex items-center gap-4 mono text-xs">
           <div>
             <span className="text-[9px] text-[#888] block">SAFE AUTONOMY RATIO</span>
-            <span className="text-[#00FF41] font-bold text-sm">99.2% AUTONOMOUS</span>
+            <span className="text-[#00FF41] font-bold text-sm">{safeAutonomyRatio}% AUTONOMOUS</span>
           </div>
           <div className="h-6 w-px bg-[#333]" />
           <div>
             <span className="text-[9px] text-[#888] block">AVG REVIEW TIME</span>
-            <span className="text-white font-bold text-sm">42 SECONDS</span>
+            <span className="text-white font-bold text-sm">NOT TRACKED</span>
           </div>
         </div>
       </div>
@@ -49,19 +54,19 @@ export const ApprovalsView: React.FC = () => {
           <span className="text-[#00FF41] font-bold">CORE PHILOSOPHY: </span>
           Autonomy first. Human oversight strictly on threshold exceptions.
         </span>
-        <span className="text-[10px] text-[#888]">12 Decisions Total: 11 Autonomous, 1 Escalated</span>
+        <span className="text-[10px] text-[#888]">{totalDecisions} Decisions Total: {autonomousDecisions} Autonomous, {approvals.length} Escalated</span>
       </div>
 
       {/* Approvals Grid */}
       <div className="space-y-3 mono text-xs">
-        {approvals.length === 0 ? (
+        {pendingApprovals.length === 0 ? (
           <div className="p-12 text-center bg-[#0E0E0E] border border-[#222] space-y-2">
             <CheckSquare className="w-8 h-8 text-[#00FF41] mx-auto opacity-80" />
             <div className="text-sm font-bold text-white">ALL SUPERVISOR QUEUES CLEAR</div>
             <p className="text-xs text-[#888]">All agent runtimes are operating safely within autonomous thresholds.</p>
           </div>
         ) : (
-          approvals.map((appr) => (
+          pendingApprovals.map((appr) => (
             <div
               key={appr.id}
               className="p-4 bg-[#0E0E0E] border border-[#222] hover:border-[#333] transition space-y-3"
@@ -108,6 +113,20 @@ export const ApprovalsView: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="pt-2 border-t border-[#1A1A1A] flex items-center justify-end gap-2">
+                <button
+                  onClick={() => {
+                    const tx = transactions.find(t => t.id === appr.transactionId);
+                    if (tx) {
+                      setSelectedTransaction(tx);
+                      setIsTransactionDrawerOpen(true);
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-[#141414] border border-[#FFA000]/40 hover:border-[#FFA000] text-[#FFA000] text-xs transition flex items-center gap-1"
+                  title="View the Guardrail Execution Trace for this review"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>VIEW TRACE</span>
+                </button>
                 <button
                   onClick={() => setRejectingApproval(appr)}
                   className="px-3 py-1.5 bg-[#141414] border border-[#FF3D00]/40 hover:border-[#FF3D00] text-[#FF3D00] text-xs transition flex items-center gap-1"
